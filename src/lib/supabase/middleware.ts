@@ -25,13 +25,16 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
+  // Use getSession() instead of getUser() to avoid network calls
+  // getSession() reads the JWT from cookies locally (no HTTP request)
+  // getUser() validates with Supabase server but can timeout on Edge
   const {
-    data: { user },
-  } = await supabase.auth.getUser()
+    data: { session },
+  } = await supabase.auth.getSession()
 
-  // If no user and not on login or API route, redirect to login
+  // If no session and not on login or API route, redirect to login
   if (
-    !user &&
+    !session &&
     !request.nextUrl.pathname.startsWith('/login') &&
     !request.nextUrl.pathname.startsWith('/api/')
   ) {
@@ -40,8 +43,8 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // If user is on login page and already authenticated, redirect to dashboard
-  if (user && request.nextUrl.pathname.startsWith('/login')) {
+  // If session exists and user is on login page, redirect to dashboard
+  if (session && request.nextUrl.pathname.startsWith('/login')) {
     const url = request.nextUrl.clone()
     url.pathname = '/dashboard'
     return NextResponse.redirect(url)
