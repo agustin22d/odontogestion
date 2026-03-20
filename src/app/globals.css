@@ -1,26 +1,49 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-green-primary: #5e8b6a;
+  --color-green-dark: #4a7055;
+  --color-green-light: #e8f0ea;
+  --color-green-50: #f0f5f1;
+  --color-gold: #c4a882;
+  --color-gold-light: #f5efe6;
+  --color-gold-dark: #a8905f;
+  --color-beige: #f9f6f0;
+  --color-surface: #ffffff;
+  --color-text-primary: #2c2c2a;
+  --color-text-secondary: #6b6b66;
+  --color-text-muted: #9c9a92;
+  --color-border: #e5e2da;
+  --color-border-light: #f0ede5;
+  --color-red: #c94a4a;
+  --color-red-light: #fdf0f0;
+  --color-blue: #4a7fc9;
+  --color-blue-light: #eef4fc;
+  --color-amber: #c99a4a;
+  --color-amber-light: #fdf6ee;
+  --color-purple: #7d5eb0;
+  --color-purple-light: #f3eefa;
+  --font-sans: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Fraunces', ui-serif, Georgia, serif;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-beige);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
 }
