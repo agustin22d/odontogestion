@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/components/AuthProvider'
 import {
@@ -28,7 +28,7 @@ const ESTADO_STYLES: Record<string, { bg: string; text: string; label: string }>
 
 export default function TurnosPage() {
   const { user } = useAuth()
-  const supabase = useMemo(() => createClient(), [])
+  const supabase = createClient()
   const [turnos, setTurnos] = useState<TurnoConSede[]>([])
   const [sedes, setSedes] = useState<Sede[]>([])
   const [loading, setLoading] = useState(true)
@@ -36,33 +36,10 @@ export default function TurnosPage() {
   const [fecha, setFecha] = useState(() => new Date().toISOString().split('T')[0])
   const [sedeFilter, setSedeFilter] = useState<string>('todas')
 
-  const fetchData = useCallback(async () => {
-    setLoading(true)
-
-    let turnosQuery = supabase
-      .from('turnos')
-      .select('*, sedes(*)')
-      .eq('fecha', fecha)
-      .order('hora', { ascending: true })
-
-    if (sedeFilter !== 'todas') {
-      turnosQuery = turnosQuery.eq('sede_id', sedeFilter)
-    }
-
-    if (user?.rol === 'rolC' && user.sede_id) {
-      turnosQuery = turnosQuery.eq('sede_id', user.sede_id)
-    }
-
-    // Fire both queries in parallel
-    const [sedesRes, turnosRes] = await Promise.all([
-      supabase.from('sedes').select('*').eq('activa', true).order('nombre'),
-      turnosQuery,
-    ])
-
-    if (sedesRes.data) setSedes(sedesRes.data)
-    setTurnos((turnosRes.data as TurnoConSede[]) || [])
-    setLoading(false)
-  }, [fecha, sedeFilter, user])
+  const fetchSedes = useCallback(async () => {
+    const { data } = await supabase.from('sedes').select('*').eq('activa', true).order('nombre')
+    if (data) setSedes(data)
+  }, [supabase])
 
   const fetchTurnos = useCallback(async () => {
     setLoading(true)
@@ -76,6 +53,7 @@ export default function TurnosPage() {
       query = query.eq('sede_id', sedeFilter)
     }
 
+    // RolC only sees their sede
     if (user?.rol === 'rolC' && user.sede_id) {
       query = query.eq('sede_id', user.sede_id)
     }
@@ -83,11 +61,15 @@ export default function TurnosPage() {
     const { data } = await query
     setTurnos((data as TurnoConSede[]) || [])
     setLoading(false)
-  }, [fecha, sedeFilter, user])
+  }, [supabase, fecha, sedeFilter, user])
 
   useEffect(() => {
-    fetchData()
-  }, [fetchData])
+    fetchSedes()
+  }, [fetchSedes])
+
+  useEffect(() => {
+    fetchTurnos()
+  }, [fetchTurnos])
 
   const handleSync = async () => {
     setSyncing(true)

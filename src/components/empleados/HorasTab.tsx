@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createHorasClient } from '@/lib/supabase/horas-client'
 import {
   ChevronLeft,
@@ -94,7 +94,7 @@ function getWeeksInMonth(y: number, m: number) { return Math.ceil((getFirstDayOf
 function formatMoney(n: number) { return '$' + Math.round(n).toLocaleString('es-AR') }
 
 export default function HorasTab() {
-  const supabase = useMemo(() => createHorasClient(), [])
+  const supabase = createHorasClient()
   const [employees, setEmployees] = useState<Employee[]>([])
   const [hours, setHours] = useState<HourEntry[]>([])
   const [approvals, setApprovals] = useState<WeeklyApproval[]>([])
@@ -113,40 +113,35 @@ export default function HorasTab() {
   const fetchAll = useCallback(async () => {
     setLoading(true)
 
-    try {
-      const [empRes, configRes, hoursRes, approvalsRes, paymentsRes] = await Promise.all([
-        supabase.from('employees').select('*').eq('active', true).order('name'),
-        supabase.from('config').select('*'),
-        supabase.from('hour_entries').select('*')
-          .gte('date', `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`)
-          .lte('date', `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${getMonthDays(currentYear, currentMonth)}`),
-        supabase.from('weekly_approvals').select('*')
-          .eq('year', currentYear).eq('month', currentMonth),
-        supabase.from('payment_records').select('*')
-          .eq('year', currentYear).eq('month', currentMonth),
-      ])
+    const [empRes, configRes, hoursRes, approvalsRes, paymentsRes] = await Promise.all([
+      supabase.from('employees').select('*').eq('active', true).order('name'),
+      supabase.from('config').select('*'),
+      supabase.from('hour_entries').select('*')
+        .gte('date', `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`)
+        .lte('date', `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${getMonthDays(currentYear, currentMonth)}`),
+      supabase.from('weekly_approvals').select('*')
+        .eq('year', currentYear).eq('month', currentMonth),
+      supabase.from('payment_records').select('*')
+        .eq('year', currentYear).eq('month', currentMonth),
+    ])
 
-      if (empRes.data) {
-        setEmployees(empRes.data)
-        if (empRes.data.length > 0) {
-          setSelectedEmployee(prev => prev ?? empRes.data[0].id)
-        }
+    if (empRes.data) {
+      setEmployees(empRes.data)
+      if (!selectedEmployee && empRes.data.length > 0) {
+        setSelectedEmployee(empRes.data[0].id)
       }
-      if (configRes.data) {
-        const cfg: Record<string, string> = {}
-        configRes.data.forEach((c: { key: string; value: string }) => { cfg[c.key] = c.value })
-        setConfig({ hourly_rate: cfg.hourly_rate || '0', sunday_multiplier: cfg.sunday_multiplier || '2' })
-      }
-      if (hoursRes.data) setHours(hoursRes.data)
-      if (approvalsRes.data) setApprovals(approvalsRes.data)
-      if (paymentsRes.data) setPayments(paymentsRes.data)
-    } catch (err) {
-      console.error('Error fetching horas data:', err)
     }
+    if (configRes.data) {
+      const cfg: Record<string, string> = {}
+      configRes.data.forEach((c: { key: string; value: string }) => { cfg[c.key] = c.value })
+      setConfig({ hourly_rate: cfg.hourly_rate || '0', sunday_multiplier: cfg.sunday_multiplier || '2' })
+    }
+    if (hoursRes.data) setHours(hoursRes.data)
+    if (approvalsRes.data) setApprovals(approvalsRes.data)
+    if (paymentsRes.data) setPayments(paymentsRes.data)
 
     setLoading(false)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentYear, currentMonth])
+  }, [supabase, currentYear, currentMonth, selectedEmployee])
 
   useEffect(() => { fetchAll() }, [fetchAll])
 

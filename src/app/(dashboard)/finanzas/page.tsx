@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/components/AuthProvider'
 import {
@@ -79,7 +79,7 @@ export default function FinanzasPage() {
 // ============================================
 function CobranzasTab() {
   const { user } = useAuth()
-  const supabase = useMemo(() => createClient(), [])
+  const supabase = createClient()
   const [cobranzas, setCobranzas] = useState<CobranzaConSede[]>([])
   const [sedes, setSedes] = useState<Sede[]>([])
   const [loading, setLoading] = useState(true)
@@ -99,33 +99,10 @@ function CobranzasTab() {
     sede_id: '',
   })
 
-  const fetchData = useCallback(async () => {
-    setLoading(true)
-
-    let cobranzasQuery = supabase
-      .from('cobranzas')
-      .select('*, sedes(*)')
-      .eq('fecha', fecha)
-      .order('created_at', { ascending: false })
-
-    if (sedeFilter !== 'todas') {
-      cobranzasQuery = cobranzasQuery.eq('sede_id', sedeFilter)
-    }
-
-    if (user?.rol === 'rolC' && user.sede_id) {
-      cobranzasQuery = cobranzasQuery.eq('sede_id', user.sede_id)
-    }
-
-    // Fire both queries in parallel
-    const [sedesRes, cobranzasRes] = await Promise.all([
-      supabase.from('sedes').select('*').eq('activa', true).order('nombre'),
-      cobranzasQuery,
-    ])
-
-    if (sedesRes.data) setSedes(sedesRes.data)
-    setCobranzas((cobranzasRes.data as CobranzaConSede[]) || [])
-    setLoading(false)
-  }, [fecha, sedeFilter, user])
+  const fetchSedes = useCallback(async () => {
+    const { data } = await supabase.from('sedes').select('*').eq('activa', true).order('nombre')
+    if (data) setSedes(data)
+  }, [supabase])
 
   const fetchCobranzas = useCallback(async () => {
     setLoading(true)
@@ -146,9 +123,10 @@ function CobranzasTab() {
     const { data } = await query
     setCobranzas((data as CobranzaConSede[]) || [])
     setLoading(false)
-  }, [fecha, sedeFilter, user])
+  }, [supabase, fecha, sedeFilter, user])
 
-  useEffect(() => { fetchData() }, [fetchData])
+  useEffect(() => { fetchSedes() }, [fetchSedes])
+  useEffect(() => { fetchCobranzas() }, [fetchCobranzas])
 
   const handleSync = async () => {
     setSyncing(true)
