@@ -26,9 +26,10 @@ const ESTADO_STYLES: Record<string, { bg: string; text: string; label: string }>
   cancelado: { bg: 'bg-amber-light', text: 'text-amber', label: 'Cancelado' },
 }
 
+const supabase = createClient()
+
 export default function TurnosPage() {
   const { user } = useAuth()
-  const supabase = createClient()
   const [turnos, setTurnos] = useState<TurnoConSede[]>([])
   const [sedes, setSedes] = useState<Sede[]>([])
   const [loading, setLoading] = useState(true)
@@ -62,7 +63,7 @@ export default function TurnosPage() {
     if (sedesRes.data) setSedes(sedesRes.data)
     setTurnos((turnosRes.data as TurnoConSede[]) || [])
     setLoading(false)
-  }, [supabase, fecha, sedeFilter, user])
+  }, [fecha, sedeFilter, user])
 
   const fetchTurnos = useCallback(async () => {
     setLoading(true)
@@ -83,7 +84,7 @@ export default function TurnosPage() {
     const { data } = await query
     setTurnos((data as TurnoConSede[]) || [])
     setLoading(false)
-  }, [supabase, fecha, sedeFilter, user])
+  }, [fecha, sedeFilter, user])
 
   useEffect(() => {
     fetchData()

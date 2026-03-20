@@ -93,8 +93,9 @@ function getWeeksInMonth(y: number, m: number) { return Math.ceil((getFirstDayOf
 
 function formatMoney(n: number) { return '$' + Math.round(n).toLocaleString('es-AR') }
 
+const supabase = createHorasClient()
+
 export default function HorasTab() {
-  const supabase = createHorasClient()
   const [employees, setEmployees] = useState<Employee[]>([])
   const [hours, setHours] = useState<HourEntry[]>([])
   const [approvals, setApprovals] = useState<WeeklyApproval[]>([])

@@ -37,9 +37,10 @@ interface CobranzaStats {
   mes: number
 }
 
+const supabase = createClient()
+
 export default function DashboardPage() {
   const { user } = useAuth()
-  const supabase = createClient()
   const [sedes, setSedes] = useState<Sede[]>([])
   const [sedeFilter, setSedeFilter] = useState<string>('todas')
   const [turnoStats, setTurnoStats] = useState<TurnoStats>({ total: 0, atendidos: 0, noShows: 0, cancelados: 0, agendados: 0, tasaShow: 0 })

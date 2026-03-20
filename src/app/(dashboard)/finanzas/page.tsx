@@ -77,9 +77,10 @@ export default function FinanzasPage() {
 // ============================================
 // COBRANZAS TAB (fully functional)
 // ============================================
+const supabase = createClient()
+
 function CobranzasTab() {
   const { user } = useAuth()
-  const supabase = createClient()
   const [cobranzas, setCobranzas] = useState<CobranzaConSede[]>([])
   const [sedes, setSedes] = useState<Sede[]>([])
   const [loading, setLoading] = useState(true)
@@ -125,7 +126,7 @@ function CobranzasTab() {
     if (sedesRes.data) setSedes(sedesRes.data)
     setCobranzas((cobranzasRes.data as CobranzaConSede[]) || [])
     setLoading(false)
-  }, [supabase, fecha, sedeFilter, user])
+  }, [fecha, sedeFilter, user])
 
   const fetchCobranzas = useCallback(async () => {
     setLoading(true)
@@ -146,7 +147,7 @@ function CobranzasTab() {
     const { data } = await query
     setCobranzas((data as CobranzaConSede[]) || [])
     setLoading(false)
-  }, [supabase, fecha, sedeFilter, user])
+  }, [fecha, sedeFilter, user])
 
   useEffect(() => { fetchData() }, [fetchData])
 
