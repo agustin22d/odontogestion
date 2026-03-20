@@ -13,6 +13,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Filter,
+  Ban,
 } from 'lucide-react'
 import type { Turno, Sede } from '@/types/database'
 
@@ -105,7 +106,8 @@ export default function TurnosPage() {
   const noShows = turnos.filter(t => t.estado === 'no_asistio').length
   const cancelados = turnos.filter(t => t.estado === 'cancelado').length
   const agendados = turnos.filter(t => t.estado === 'agendado').length
-  const tasaShow = total > 0 ? Math.round((atendidos / (atendidos + noShows || 1)) * 100) : 0
+  const efectivos = atendidos + noShows // turnos que no se cancelaron y debían presentarse
+  const tasaShow = efectivos > 0 ? Math.round((atendidos / efectivos) * 100) : 0
 
   const formatFecha = (f: string) => {
     const d = new Date(f + 'T12:00:00')
@@ -176,11 +178,12 @@ export default function TurnosPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
         <StatCard icon={<CalendarDays size={18} />} label="Total" value={total} color="text-text-primary" />
         <StatCard icon={<Clock size={18} />} label="Agendados" value={agendados} color="text-blue" />
         <StatCard icon={<CheckCircle2 size={18} />} label="Atendidos" value={atendidos} color="text-green-primary" />
         <StatCard icon={<XCircle size={18} />} label="No asistió" value={noShows} color="text-red" />
+        <StatCard icon={<Ban size={18} />} label="Cancelados" value={cancelados} color="text-amber" />
         <StatCard icon={<Users size={18} />} label="Tasa show" value={`${tasaShow}%`} color="text-green-primary" />
       </div>
 
