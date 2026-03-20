@@ -36,10 +36,33 @@ export default function TurnosPage() {
   const [fecha, setFecha] = useState(() => new Date().toISOString().split('T')[0])
   const [sedeFilter, setSedeFilter] = useState<string>('todas')
 
-  const fetchSedes = useCallback(async () => {
-    const { data } = await supabase.from('sedes').select('*').eq('activa', true).order('nombre')
-    if (data) setSedes(data)
-  }, [supabase])
+  const fetchData = useCallback(async () => {
+    setLoading(true)
+
+    let turnosQuery = supabase
+      .from('turnos')
+      .select('*, sedes(*)')
+      .eq('fecha', fecha)
+      .order('hora', { ascending: true })
+
+    if (sedeFilter !== 'todas') {
+      turnosQuery = turnosQuery.eq('sede_id', sedeFilter)
+    }
+
+    if (user?.rol === 'rolC' && user.sede_id) {
+      turnosQuery = turnosQuery.eq('sede_id', user.sede_id)
+    }
+
+    // Fire both queries in parallel
+    const [sedesRes, turnosRes] = await Promise.all([
+      supabase.from('sedes').select('*').eq('activa', true).order('nombre'),
+      turnosQuery,
+    ])
+
+    if (sedesRes.data) setSedes(sedesRes.data)
+    setTurnos((turnosRes.data as TurnoConSede[]) || [])
+    setLoading(false)
+  }, [supabase, fecha, sedeFilter, user])
 
   const fetchTurnos = useCallback(async () => {
     setLoading(true)
@@ -53,7 +76,6 @@ export default function TurnosPage() {
       query = query.eq('sede_id', sedeFilter)
     }
 
-    // RolC only sees their sede
     if (user?.rol === 'rolC' && user.sede_id) {
       query = query.eq('sede_id', user.sede_id)
     }
@@ -64,12 +86,8 @@ export default function TurnosPage() {
   }, [supabase, fecha, sedeFilter, user])
 
   useEffect(() => {
-    fetchSedes()
-  }, [fetchSedes])
-
-  useEffect(() => {
-    fetchTurnos()
-  }, [fetchTurnos])
+    fetchData()
+  }, [fetchData])
 
   const handleSync = async () => {
     setSyncing(true)

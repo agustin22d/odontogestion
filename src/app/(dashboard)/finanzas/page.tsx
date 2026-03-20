@@ -99,10 +99,33 @@ function CobranzasTab() {
     sede_id: '',
   })
 
-  const fetchSedes = useCallback(async () => {
-    const { data } = await supabase.from('sedes').select('*').eq('activa', true).order('nombre')
-    if (data) setSedes(data)
-  }, [supabase])
+  const fetchData = useCallback(async () => {
+    setLoading(true)
+
+    let cobranzasQuery = supabase
+      .from('cobranzas')
+      .select('*, sedes(*)')
+      .eq('fecha', fecha)
+      .order('created_at', { ascending: false })
+
+    if (sedeFilter !== 'todas') {
+      cobranzasQuery = cobranzasQuery.eq('sede_id', sedeFilter)
+    }
+
+    if (user?.rol === 'rolC' && user.sede_id) {
+      cobranzasQuery = cobranzasQuery.eq('sede_id', user.sede_id)
+    }
+
+    // Fire both queries in parallel
+    const [sedesRes, cobranzasRes] = await Promise.all([
+      supabase.from('sedes').select('*').eq('activa', true).order('nombre'),
+      cobranzasQuery,
+    ])
+
+    if (sedesRes.data) setSedes(sedesRes.data)
+    setCobranzas((cobranzasRes.data as CobranzaConSede[]) || [])
+    setLoading(false)
+  }, [supabase, fecha, sedeFilter, user])
 
   const fetchCobranzas = useCallback(async () => {
     setLoading(true)
@@ -125,8 +148,7 @@ function CobranzasTab() {
     setLoading(false)
   }, [supabase, fecha, sedeFilter, user])
 
-  useEffect(() => { fetchSedes() }, [fetchSedes])
-  useEffect(() => { fetchCobranzas() }, [fetchCobranzas])
+  useEffect(() => { fetchData() }, [fetchData])
 
   const handleSync = async () => {
     setSyncing(true)
