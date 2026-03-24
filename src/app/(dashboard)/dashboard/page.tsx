@@ -14,6 +14,7 @@ import {
   Filter,
 } from 'lucide-react'
 import type { Sede } from '@/types/database'
+import EmpleadoDashboard from '@/components/empleados/EmpleadoDashboard'
 
 interface TurnoStats {
   total: number
@@ -38,6 +39,29 @@ interface CobranzaStats {
 }
 
 export default function DashboardPage() {
+  const { user } = useAuth()
+  const isAdmin = user?.rol === 'admin'
+
+  if (!isAdmin) {
+    return <EmpleadoDashboardWrapper />
+  }
+
+  return <AdminDashboard />
+}
+
+function EmpleadoDashboardWrapper() {
+  return (
+    <div>
+      <div className="mb-6">
+        <h1 className="font-display text-2xl font-semibold text-text-primary mb-1">Mi Panel</h1>
+        <p className="text-sm text-text-secondary">Tu resumen diario</p>
+      </div>
+      <EmpleadoDashboard />
+    </div>
+  )
+}
+
+function AdminDashboard() {
   const { user } = useAuth()
   const supabase = createClient()
   const [sedes, setSedes] = useState<Sede[]>([])

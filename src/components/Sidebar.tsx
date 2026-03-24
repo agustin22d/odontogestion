@@ -9,6 +9,8 @@ import {
   Wallet,
   Package,
   Users,
+  CheckSquare,
+  Timer,
   LogOut,
   ChevronLeft,
   Menu,
@@ -22,12 +24,19 @@ interface NavItem {
   roles: string[]
 }
 
-const navItems: NavItem[] = [
+const adminNavItems: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard size={20} />, roles: ['admin'] },
-  { label: 'Turnos', href: '/turnos', icon: <CalendarDays size={20} />, roles: ['admin', 'rolA', 'rolC'] },
+  { label: 'Turnos', href: '/turnos', icon: <CalendarDays size={20} />, roles: ['admin'] },
   { label: 'Finanzas', href: '/finanzas', icon: <Wallet size={20} />, roles: ['admin', 'rolC'] },
   { label: 'Stock', href: '/stock', icon: <Package size={20} />, roles: ['admin', 'rolC'] },
-  { label: 'Empleados', href: '/empleados', icon: <Users size={20} />, roles: ['admin', 'rolA', 'rolB', 'rolC'] },
+  { label: 'Empleados', href: '/empleados', icon: <Users size={20} />, roles: ['admin'] },
+]
+
+const employeeNavItems: NavItem[] = [
+  { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard size={20} />, roles: ['rolA', 'rolB', 'rolC'] },
+  { label: 'Turnos', href: '/turnos', icon: <CalendarDays size={20} />, roles: ['rolA', 'rolC'] },
+  { label: 'Tareas', href: '/tareas', icon: <CheckSquare size={20} />, roles: ['rolA', 'rolB', 'rolC'] },
+  { label: 'Horas', href: '/horas', icon: <Timer size={20} />, roles: ['rolA', 'rolB', 'rolC'] },
 ]
 
 export default function Sidebar() {
@@ -36,6 +45,8 @@ export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 
+  const isAdmin = user?.rol === 'admin'
+  const navItems = isAdmin ? adminNavItems : employeeNavItems
   const filteredItems = navItems.filter((item) => user && item.roles.includes(user.rol))
 
   const roleLabels: Record<string, string> = {
