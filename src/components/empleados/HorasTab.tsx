@@ -11,7 +11,6 @@ import {
   DollarSign,
   Calendar,
   CheckCircle2,
-  Settings,
   BarChart3,
 } from 'lucide-react'
 
@@ -90,7 +89,7 @@ function isDoubleDay(date: Date): boolean {
 }
 
 // --- Sub-views for admin ---
-type AdminView = 'resumen' | 'calendario' | 'config'
+type AdminView = 'resumen' | 'calendario'
 
 // --- Main Component ---
 
@@ -469,7 +468,6 @@ export default function HorasTab({ isAdmin }: { isAdmin: boolean }) {
           {([
             { id: 'resumen' as AdminView, label: 'Resumen', icon: <BarChart3 size={14} /> },
             { id: 'calendario' as AdminView, label: 'Calendario', icon: <Calendar size={14} /> },
-            { id: 'config' as AdminView, label: 'Configuración', icon: <Settings size={14} /> },
           ]).map(tab => (
             <button
               key={tab.id}
@@ -555,14 +553,7 @@ export default function HorasTab({ isAdmin }: { isAdmin: boolean }) {
               />
             )}
           </>
-        ) : (
-          <AdminConfig
-            config={config}
-            onUpdateConfig={updateConfigValue}
-            employees={employees}
-            fetchEmployees={fetchEmployees}
-          />
-        )}
+        ) : null}
       </div>
     )
   }
@@ -755,7 +746,7 @@ function AdminResumen({
 // ADMIN CONFIG
 // =====================
 
-function AdminConfig({
+export function AdminConfig({
   config,
   onUpdateConfig,
   employees,

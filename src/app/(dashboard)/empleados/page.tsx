@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/components/AuthProvider'
 import {
   LayoutDashboard,
@@ -11,8 +11,9 @@ import {
   AlertCircle,
 } from 'lucide-react'
 import TareasTab from '@/components/empleados/TareasTab'
-import HorasTab from '@/components/empleados/HorasTab'
+import HorasTab, { AdminConfig } from '@/components/empleados/HorasTab'
 import EmpleadoDashboard from '@/components/empleados/EmpleadoDashboard'
+import { createHorasClient } from '@/lib/supabase/horas-client'
 
 type AdminTabId = 'tareas' | 'turnos-agendados' | 'horas' | 'config'
 type EmployeeTabId = 'dashboard' | 'turnos' | 'tareas' | 'horas'
@@ -106,13 +107,62 @@ function TurnosAgendadosTab() {
 }
 
 function ConfigTab() {
+  const supabase = createHorasClient()
+  const [config, setConfig] = useState({ hourly_rate: 8000, sunday_multiplier: 2 })
+  const [employees, setEmployees] = useState<{ id: string; name: string; active: boolean; gestion_user_id: string | null }[]>([])
+
+  const fetchConfig = useCallback(async () => {
+    try {
+      const { data } = await supabase.from('config').select('key, value')
+      if (data) {
+        const rows = data as unknown as { key: string; value: string }[]
+        const cfg: Record<string, string> = {}
+        rows.forEach((d) => { cfg[d.key] = d.value })
+        setConfig({
+          hourly_rate: Number(cfg.hourly_rate) || 8000,
+          sunday_multiplier: Number(cfg.sunday_multiplier) || 2,
+        })
+      }
+    } catch (err) {
+      console.error('Error fetching config:', err)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const fetchEmployees = useCallback(async () => {
+    try {
+      const { data } = await supabase
+        .from('employees')
+        .select('id, name, active, gestion_user_id')
+        .eq('active', true)
+        .order('name')
+      if (data) setEmployees(data as unknown as typeof employees)
+    } catch (err) {
+      console.error('Error fetching employees:', err)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const updateConfigValue = async (key: string, value: string) => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase.from('config') as any)
+        .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' })
+      fetchConfig()
+    } catch (err) {
+      console.error('Error updating config:', err)
+    }
+  }
+
+  useEffect(() => { fetchConfig() }, [fetchConfig])
+  useEffect(() => { fetchEmployees() }, [fetchEmployees])
+
   return (
-    <div className="bg-surface rounded-xl border border-border p-8 text-center">
-      <AlertCircle size={40} className="mx-auto text-text-muted mb-3" />
-      <h3 className="text-lg font-semibold text-text-primary mb-2">Configuracion de empleados</h3>
-      <p className="text-sm text-text-secondary max-w-md mx-auto">
-        Alta y baja de empleados, asignacion de rol, sede y tipo de pago.
-      </p>
-    </div>
+    <AdminConfig
+      config={config}
+      onUpdateConfig={updateConfigValue}
+      employees={employees}
+      fetchEmployees={fetchEmployees}
+    />
   )
 }
