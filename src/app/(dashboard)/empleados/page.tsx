@@ -9,6 +9,7 @@ import {
   Settings,
   AlertCircle,
 } from 'lucide-react'
+import TareasTab from '@/components/empleados/TareasTab'
 
 type TabId = 'tareas' | 'turnos-agendados' | 'horas' | 'config'
 
@@ -63,25 +64,10 @@ export default function EmpleadosPage() {
 
       {/* Tab content */}
       {activeTab === 'tareas' && <TareasTab isAdmin={isAdmin} />}
+      {/* Other tabs below */}
       {activeTab === 'turnos-agendados' && <TurnosAgendadosTab isAdmin={isAdmin} />}
       {activeTab === 'horas' && <HorasTab isAdmin={isAdmin} />}
       {activeTab === 'config' && isAdmin && <ConfigTab />}
-    </div>
-  )
-}
-
-function TareasTab({ isAdmin }: { isAdmin: boolean }) {
-  return (
-    <div className="bg-surface rounded-xl border border-border p-8 text-center">
-      <AlertCircle size={40} className="mx-auto text-text-muted mb-3" />
-      <h3 className="text-lg font-semibold text-text-primary mb-2">
-        {isAdmin ? 'Tareas del equipo' : 'Mis Tareas'}
-      </h3>
-      <p className="text-sm text-text-secondary max-w-md mx-auto">
-        {isAdmin
-          ? 'Checklist de tareas por empleado y sede. Veras el progreso de cada uno en tiempo real.'
-          : 'Tu checklist diario de tareas. Tildalas a medida que las vayas completando.'}
-      </p>
     </div>
   )
 }
