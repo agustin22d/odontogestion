@@ -24,15 +24,18 @@ const SUCURSAL_MAP: Record<number, string> = {
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}))
-    const dias = body.dias || 7
+    const diasAtras = body.dias || 7
+    const diasAdelante = body.diasAdelante || 30
 
-    // Calculate date range
+    // Calculate date range: past + future
     const hoy = new Date()
     const desde = new Date()
-    desde.setDate(hoy.getDate() - dias)
+    desde.setDate(hoy.getDate() - diasAtras)
+    const hasta = new Date()
+    hasta.setDate(hoy.getDate() + diasAdelante)
 
     const fechaDesde = desde.toISOString().split('T')[0]
-    const fechaHasta = hoy.toISOString().split('T')[0]
+    const fechaHasta = hasta.toISOString().split('T')[0]
 
     // Fetch citas from Dentalink
     const citas = await fetchPaginado<DentalinkCita>('/citas', {
