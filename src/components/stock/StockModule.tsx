@@ -439,17 +439,27 @@ function ProductosView({ productos, onRefresh }: { productos: ProductoStock[]; o
   const [stockMinimo, setStockMinimo] = useState(3)
   const [precioCompra, setPrecioCompra] = useState('')
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
 
   const handleAdd = async () => {
     if (!nombre.trim()) return
+    setError('')
     setSaving(true)
     try {
-      await supabase.from('stock_productos').insert({
+      const { error: insertError } = await supabase.from('stock_productos').insert({
         nombre: nombre.trim(),
         unidad,
         stock_minimo: stockMinimo,
         precio_compra: precioCompra ? Number(precioCompra) : null,
       })
+      if (insertError) {
+        if (insertError.code === '23505') {
+          setError(`Ya existe un producto con el nombre "${nombre.trim()}"`)
+        } else {
+          setError(insertError.message)
+        }
+        return
+      }
       setNombre('')
       setUnidad('unidades')
       setStockMinimo(3)
@@ -458,18 +468,19 @@ function ProductosView({ productos, onRefresh }: { productos: ProductoStock[]; o
       onRefresh()
     } catch (err) {
       console.error('Error adding product:', err)
+      setError('Error inesperado al guardar')
     } finally {
       setSaving(false)
     }
   }
 
   const toggleActive = async (prod: ProductoStock) => {
-    try {
-      await supabase.from('stock_productos').update({ activo: !prod.activo }).eq('id', prod.id)
-      onRefresh()
-    } catch (err) {
-      console.error('Error toggling product:', err)
+    const { error: updateError } = await supabase.from('stock_productos').update({ activo: !prod.activo }).eq('id', prod.id)
+    if (updateError) {
+      console.error('Error toggling product:', updateError)
+      return
     }
+    onRefresh()
   }
 
   return (
@@ -530,6 +541,9 @@ function ProductosView({ productos, onRefresh }: { productos: ProductoStock[]; o
               />
             </div>
           </div>
+          {error && (
+            <p className="text-sm text-red">{error}</p>
+          )}
           <div className="flex gap-2">
             <button
               onClick={handleAdd}
@@ -539,7 +553,7 @@ function ProductosView({ productos, onRefresh }: { productos: ProductoStock[]; o
               {saving ? 'Guardando...' : 'Guardar'}
             </button>
             <button
-              onClick={() => setShowForm(false)}
+              onClick={() => { setShowForm(false); setError('') }}
               className="px-4 py-2 border border-border rounded-lg text-sm text-text-secondary hover:bg-beige transition-colors"
             >
               Cancelar
@@ -608,11 +622,14 @@ function MovimientoModal({
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0])
   const [saving, setSaving] = useState(false)
 
+  const [error, setError] = useState('')
+
   const handleSave = async () => {
     if (!productoId || !sedeId || cantidad <= 0) return
+    setError('')
     setSaving(true)
     try {
-      await supabase.from('stock_movimientos').insert({
+      const { error: insertError } = await supabase.from('stock_movimientos').insert({
         producto_id: productoId,
         sede_id: sedeId,
         tipo: type,
@@ -621,10 +638,15 @@ function MovimientoModal({
         fecha,
         created_by: userId,
       })
+      if (insertError) {
+        setError(insertError.message)
+        return
+      }
       onSaved()
       onClose()
     } catch (err) {
       console.error('Error saving movimiento:', err)
+      setError('Error inesperado al guardar')
     } finally {
       setSaving(false)
     }
@@ -700,6 +722,7 @@ function MovimientoModal({
               className="w-full text-sm border border-border rounded-lg px-3 py-2 bg-white text-text-primary focus:outline-none focus:border-green-primary"
             />
           </div>
+          {error && <p className="text-sm text-red">{error}</p>}
         </div>
 
         <div className="flex justify-end gap-2 p-4 border-t border-border">
