@@ -102,7 +102,8 @@ function CobranzasTab() {
   const fetchSedes = useCallback(async () => {
     const { data } = await supabase.from('sedes').select('*').eq('activa', true).order('nombre')
     if (data) setSedes(data)
-  }, [supabase])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const fetchCobranzas = useCallback(async () => {
     setLoading(true)
@@ -123,7 +124,8 @@ function CobranzasTab() {
     const { data } = await query
     setCobranzas((data as CobranzaConSede[]) || [])
     setLoading(false)
-  }, [supabase, fecha, sedeFilter, user])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fecha, sedeFilter, user])
 
   useEffect(() => { fetchSedes() }, [fetchSedes])
   useEffect(() => { fetchCobranzas() }, [fetchCobranzas])

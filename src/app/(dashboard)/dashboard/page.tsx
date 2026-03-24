@@ -54,37 +54,54 @@ export default function DashboardPage() {
   const fetchSedes = useCallback(async () => {
     const { data } = await supabase.from('sedes').select('*').eq('activa', true).order('nombre')
     if (data) setSedes(data)
-  }, [supabase])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const fetchDashboardData = useCallback(async () => {
     setLoading(true)
+    try {
+      const inicioSemana = getInicioSemana()
+      const inicioMes = hoy.slice(0, 7) + '-01'
 
-    // --- TURNOS HOY ---
-    let turnosQuery = supabase.from('turnos').select('*').eq('fecha', hoy)
-    if (sedeFilter !== 'todas') turnosQuery = turnosQuery.eq('sede_id', sedeFilter)
-    const { data: turnosHoy } = await turnosQuery
+      // Build all queries
+      let turnosQuery = supabase.from('turnos').select('*, sedes(nombre)').eq('fecha', hoy)
+      if (sedeFilter !== 'todas') turnosQuery = turnosQuery.eq('sede_id', sedeFilter)
 
-    if (turnosHoy) {
+      let cobHoyQuery = supabase.from('cobranzas').select('monto').eq('fecha', hoy)
+      if (sedeFilter !== 'todas') cobHoyQuery = cobHoyQuery.eq('sede_id', sedeFilter)
+
+      let cobSemQuery = supabase.from('cobranzas').select('monto').gte('fecha', inicioSemana).lte('fecha', hoy)
+      if (sedeFilter !== 'todas') cobSemQuery = cobSemQuery.eq('sede_id', sedeFilter)
+
+      let cobMesQuery = supabase.from('cobranzas').select('monto').gte('fecha', inicioMes).lte('fecha', hoy)
+      if (sedeFilter !== 'todas') cobMesQuery = cobMesQuery.eq('sede_id', sedeFilter)
+
+      let deudasQuery = supabase.from('deudas').select('monto_total, monto_cobrado').in('estado', ['pendiente', 'parcial'])
+      if (sedeFilter !== 'todas') deudasQuery = deudasQuery.eq('sede_id', sedeFilter)
+
+      let tareasQuery = supabase.from('tareas').select('id').eq('fecha', hoy).eq('completada', false)
+      if (sedeFilter !== 'todas') tareasQuery = tareasQuery.eq('sede_id', sedeFilter)
+
+      // Run ALL queries in parallel
+      const [turnosRes, cobHoyRes, cobSemRes, cobMesRes, deudasRes, tareasRes] = await Promise.all([
+        turnosQuery, cobHoyQuery, cobSemQuery, cobMesQuery, deudasQuery, tareasQuery,
+      ])
+
+      // Process turnos
+      const turnosHoy = turnosRes.data || []
       const total = turnosHoy.length
-      const atendidos = turnosHoy.filter(t => t.estado === 'atendido').length
-      const noShows = turnosHoy.filter(t => t.estado === 'no_asistio').length
-      const cancelados = turnosHoy.filter(t => t.estado === 'cancelado').length
-      const agendados = turnosHoy.filter(t => t.estado === 'agendado').length
+      const atendidos = turnosHoy.filter((t: { estado: string }) => t.estado === 'atendido').length
+      const noShows = turnosHoy.filter((t: { estado: string }) => t.estado === 'no_asistio').length
+      const cancelados = turnosHoy.filter((t: { estado: string }) => t.estado === 'cancelado').length
+      const agendados = turnosHoy.filter((t: { estado: string }) => t.estado === 'agendado').length
       const relevantes = atendidos + noShows
       const tasaShow = relevantes > 0 ? Math.round((atendidos / relevantes) * 100) : 0
       setTurnoStats({ total, atendidos, noShows, cancelados, agendados, tasaShow })
-    }
 
-    // --- TURNOS POR SEDE (hoy) ---
-    if (sedeFilter === 'todas') {
-      const { data: allTurnos } = await supabase
-        .from('turnos')
-        .select('*, sedes(nombre)')
-        .eq('fecha', hoy)
-
-      if (allTurnos) {
+      // Process turnos por sede
+      if (sedeFilter === 'todas') {
         const porSede: Record<string, TurnosPorSede> = {}
-        allTurnos.forEach((t: { sedes: { nombre: string } | null; estado: string }) => {
+        turnosHoy.forEach((t: { sedes: { nombre: string } | null; estado: string }) => {
           const nombre = t.sedes?.nombre || 'Sin sede'
           if (!porSede[nombre]) porSede[nombre] = { sede_nombre: nombre, total: 0, atendidos: 0, noShows: 0 }
           porSede[nombre].total++
@@ -93,45 +110,26 @@ export default function DashboardPage() {
         })
         setTurnosPorSede(Object.values(porSede).sort((a, b) => b.total - a.total))
       }
+
+      // Process cobranzas
+      setCobranzaStats({
+        hoy: cobHoyRes.data?.reduce((sum: number, c: { monto: number }) => sum + Number(c.monto), 0) || 0,
+        semana: cobSemRes.data?.reduce((sum: number, c: { monto: number }) => sum + Number(c.monto), 0) || 0,
+        mes: cobMesRes.data?.reduce((sum: number, c: { monto: number }) => sum + Number(c.monto), 0) || 0,
+      })
+
+      // Process deudas
+      const totalDeudas = deudasRes.data?.reduce((sum: number, d: { monto_total: number; monto_cobrado: number }) => sum + (Number(d.monto_total) - Number(d.monto_cobrado)), 0) || 0
+      setDeudasPendientes(totalDeudas)
+
+      // Process tareas
+      setTareasPendientes(tareasRes.data?.length || 0)
+    } catch (err) {
+      console.error('Error fetching dashboard:', err)
     }
-
-    // --- COBRANZAS ---
-    const inicioSemana = getInicioSemana()
-    const inicioMes = hoy.slice(0, 7) + '-01'
-
-    let cobHoyQuery = supabase.from('cobranzas').select('monto').eq('fecha', hoy)
-    if (sedeFilter !== 'todas') cobHoyQuery = cobHoyQuery.eq('sede_id', sedeFilter)
-    const { data: cobHoy } = await cobHoyQuery
-
-    let cobSemQuery = supabase.from('cobranzas').select('monto').gte('fecha', inicioSemana).lte('fecha', hoy)
-    if (sedeFilter !== 'todas') cobSemQuery = cobSemQuery.eq('sede_id', sedeFilter)
-    const { data: cobSem } = await cobSemQuery
-
-    let cobMesQuery = supabase.from('cobranzas').select('monto').gte('fecha', inicioMes).lte('fecha', hoy)
-    if (sedeFilter !== 'todas') cobMesQuery = cobMesQuery.eq('sede_id', sedeFilter)
-    const { data: cobMes } = await cobMesQuery
-
-    setCobranzaStats({
-      hoy: cobHoy?.reduce((sum, c) => sum + Number(c.monto), 0) || 0,
-      semana: cobSem?.reduce((sum, c) => sum + Number(c.monto), 0) || 0,
-      mes: cobMes?.reduce((sum, c) => sum + Number(c.monto), 0) || 0,
-    })
-
-    // --- DEUDAS PENDIENTES ---
-    let deudasQuery = supabase.from('deudas').select('monto_total, monto_cobrado').in('estado', ['pendiente', 'parcial'])
-    if (sedeFilter !== 'todas') deudasQuery = deudasQuery.eq('sede_id', sedeFilter)
-    const { data: deudas } = await deudasQuery
-    const totalDeudas = deudas?.reduce((sum, d) => sum + (Number(d.monto_total) - Number(d.monto_cobrado)), 0) || 0
-    setDeudasPendientes(totalDeudas)
-
-    // --- TAREAS PENDIENTES HOY ---
-    let tareasQuery = supabase.from('tareas').select('id').eq('fecha', hoy).eq('completada', false)
-    if (sedeFilter !== 'todas') tareasQuery = tareasQuery.eq('sede_id', sedeFilter)
-    const { data: tareas } = await tareasQuery
-    setTareasPendientes(tareas?.length || 0)
-
     setLoading(false)
-  }, [supabase, hoy, sedeFilter])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hoy, sedeFilter])
 
   useEffect(() => { fetchSedes() }, [fetchSedes])
   useEffect(() => { fetchDashboardData() }, [fetchDashboardData])

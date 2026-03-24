@@ -39,7 +39,8 @@ export default function TurnosPage() {
   const fetchSedes = useCallback(async () => {
     const { data } = await supabase.from('sedes').select('*').eq('activa', true).order('nombre')
     if (data) setSedes(data)
-  }, [supabase])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const fetchTurnos = useCallback(async () => {
     setLoading(true)
@@ -61,7 +62,8 @@ export default function TurnosPage() {
     const { data } = await query
     setTurnos((data as TurnoConSede[]) || [])
     setLoading(false)
-  }, [supabase, fecha, sedeFilter, user])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fecha, sedeFilter, user])
 
   useEffect(() => {
     fetchSedes()
