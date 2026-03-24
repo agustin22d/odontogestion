@@ -14,6 +14,7 @@ import {
   ChevronRight,
   Filter,
   Ban,
+  Search,
 } from 'lucide-react'
 import type { Turno, Sede } from '@/types/database'
 
@@ -35,6 +36,7 @@ export default function TurnosPage() {
   const [syncing, setSyncing] = useState(false)
   const [fecha, setFecha] = useState(() => new Date().toISOString().split('T')[0])
   const [sedeFilter, setSedeFilter] = useState<string>('todas')
+  const [busqueda, setBusqueda] = useState('')
 
   const fetchSedes = useCallback(async () => {
     const { data } = await supabase.from('sedes').select('*').eq('activa', true).order('nombre')
@@ -102,7 +104,15 @@ export default function TurnosPage() {
 
   const goToday = () => setFecha(new Date().toISOString().split('T')[0])
 
-  // Stats
+  // Filter by search
+  const turnosFiltrados = busqueda.trim()
+    ? turnos.filter(t =>
+        t.paciente?.toLowerCase().includes(busqueda.toLowerCase()) ||
+        t.profesional?.toLowerCase().includes(busqueda.toLowerCase())
+      )
+    : turnos
+
+  // Stats (based on all turnos, not filtered)
   const total = turnos.length
   const atendidos = turnos.filter(t => t.estado === 'atendido').length
   const noShows = turnos.filter(t => t.estado === 'no_asistio').length
@@ -179,6 +189,18 @@ export default function TurnosPage() {
         )}
       </div>
 
+      {/* Search */}
+      <div className="relative mb-4">
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+        <input
+          type="text"
+          placeholder="Buscar paciente o profesional..."
+          value={busqueda}
+          onChange={(e) => setBusqueda(e.target.value)}
+          className="w-full sm:w-80 pl-9 pr-3 py-2 text-sm border border-border rounded-lg bg-surface text-text-primary placeholder:text-text-muted focus:outline-none focus:border-green-primary"
+        />
+      </div>
+
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
         <StatCard icon={<CalendarDays size={18} />} label="Total" value={total} color="text-text-primary" />
@@ -193,10 +215,9 @@ export default function TurnosPage() {
       <div className="bg-surface rounded-xl border border-border overflow-hidden">
         {loading ? (
           <div className="p-8 text-center text-text-muted text-sm">Cargando turnos...</div>
-        ) : turnos.length === 0 ? (
+        ) : turnosFiltrados.length === 0 ? (
           <div className="p-8 text-center text-text-muted text-sm">
-            No hay turnos para esta fecha
-            {sedeFilter !== 'todas' ? ' en esta sede' : ''}
+            {busqueda ? `No se encontraron turnos para "${busqueda}"` : `No hay turnos para esta fecha${sedeFilter !== 'todas' ? ' en esta sede' : ''}`}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -211,7 +232,7 @@ export default function TurnosPage() {
                 </tr>
               </thead>
               <tbody>
-                {turnos.map((turno) => {
+                {turnosFiltrados.map((turno) => {
                   const estilo = ESTADO_STYLES[turno.estado] || ESTADO_STYLES.agendado
                   return (
                     <tr key={turno.id} className="border-b border-border-light hover:bg-beige/30 transition-colors">
@@ -240,7 +261,7 @@ export default function TurnosPage() {
       {/* Footer info */}
       {!loading && turnos.length > 0 && (
         <p className="text-xs text-text-muted mt-3">
-          {turnos.length} turno{turnos.length !== 1 ? 's' : ''} · Última sincronización con Dentalink disponible
+          {busqueda ? `${turnosFiltrados.length} de ` : ''}{turnos.length} turno{turnos.length !== 1 ? 's' : ''} · Última sincronización con Dentalink disponible
         </p>
       )}
     </div>
