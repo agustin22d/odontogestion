@@ -7,6 +7,7 @@ export type EstadoHora = 'pendiente' | 'aprobada' | 'pagada'
 export type TipoGasto = 'fijo' | 'variable'
 export type TipoPagoEmpleado = 'fijo' | 'comision' | 'fijo_bono' | 'por_hora'
 export type TipoMovimientoStock = 'entrada' | 'salida'
+export type EstadoLaboratorio = 'escaneado' | 'enviada' | 'en_proceso' | 'retirada' | 'colocada' | 'a_revisar'
 
 export interface Sede {
   id: string
@@ -154,4 +155,29 @@ export interface MovimientoStock {
   producto?: ProductoStock
   user?: User
   sede?: Sede
+}
+
+export interface LaboratorioCaso {
+  id: string
+  paciente: string
+  sede_id: string | null
+  profesional: string | null
+  tipo: string
+  laboratorio: string | null
+  estado: EstadoLaboratorio
+  notas: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  // joins
+  sede?: Sede
+}
+
+export interface LaboratorioHistorial {
+  id: string
+  caso_id: string
+  estado_anterior: EstadoLaboratorio | null
+  estado_nuevo: EstadoLaboratorio
+  user_id: string | null
+  created_at: string
 }

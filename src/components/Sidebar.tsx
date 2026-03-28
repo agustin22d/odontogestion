@@ -15,6 +15,7 @@ import {
   ChevronLeft,
   Menu,
   Settings,
+  FlaskConical,
 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -31,6 +32,7 @@ const adminNavItems: NavItem[] = [
   { label: 'Turnos', href: '/turnos', icon: <CalendarDays size={20} />, roles: ['admin'] },
   { label: 'Finanzas', href: '/finanzas', icon: <Wallet size={20} />, roles: ['admin'] },
   { label: 'Stock', href: '/stock', icon: <Package size={20} />, roles: ['admin', 'rolC'] },
+  { label: 'Laboratorio', href: '/laboratorio', icon: <FlaskConical size={20} />, roles: ['admin'] },
   { label: 'Empleados', href: '/empleados', icon: <Users size={20} />, roles: ['admin'], disabled: true },
   { label: 'Configuración', href: '/configuracion', icon: <Settings size={20} />, roles: ['admin'], disabled: true },
 ]
