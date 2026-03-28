@@ -39,12 +39,38 @@ function esPrimeraVez(comentario: string): boolean {
     c.includes('1° vez') ||
     c.includes('1era vez') ||
     c.includes('primer vez') ||
-    c.includes('pv') ||
     c.includes('primera consulta') ||
     c.includes('paciente nuevo') ||
     c.includes('pac nuevo') ||
     c.includes('pac nueva')
   )
+}
+
+/**
+ * Max ID de citas de los 14 días anteriores (una sola query de rango).
+ */
+async function getMaxIdAnterior(fecha: string): Promise<number> {
+  const d = new Date(fecha + 'T12:00:00')
+
+  const yesterday = new Date(d)
+  yesterday.setDate(yesterday.getDate() - 1)
+  const yesterdayStr = yesterday.toISOString().split('T')[0]
+
+  const twoWeeksAgo = new Date(d)
+  twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14)
+  const twoWeeksAgoStr = twoWeeksAgo.toISOString().split('T')[0]
+
+  const citas = await fetchPaginado<DentalinkCitaFull>('/citas', {
+    fecha_actualizacion: [
+      { gte: `${twoWeeksAgoStr} 00:00:00` },
+      { lte: `${yesterdayStr} 23:59:59` },
+    ],
+  })
+
+  if (citas.length > 0) {
+    return Math.max(...citas.map(c => c.id))
+  }
+  return 0
 }
 
 function detectarOrigen(comentario: string): string {
@@ -80,7 +106,10 @@ export async function GET(request: Request) {
   }
 
   try {
-    // 1. Traer citas actualizadas en la fecha seleccionada
+    // 1. Obtener max ID de los 14 días anteriores (baseline)
+    const maxIdAnterior = await getMaxIdAnterior(fecha)
+
+    // 2. Traer citas actualizadas en la fecha seleccionada
     const citasHoy = await fetchPaginado<DentalinkCitaFull>('/citas', {
       fecha_actualizacion: [
         { gte: `${fecha} 00:00:00` },
@@ -88,16 +117,19 @@ export async function GET(request: Request) {
       ],
     })
 
-    // 2. Filtrar solo "primera vez" por comentario
-    const citasPrimeraVez = citasHoy.filter(c => esPrimeraVez(c.comentarios))
+    // 3. Filtrar por ID (solo citas creadas recientemente)
+    const citasPorId = maxIdAnterior > 0
+      ? citasHoy.filter(c => c.id > maxIdAnterior)
+      : citasHoy
 
-    // 3. Cruzar con pacientes creados HOY en Dentalink
-    //    Si es "primera vez", el paciente se creó el mismo día que se dio el turno
+    // 4. Filtrar solo "primera vez" por comentario
+    const citasPrimeraVez = citasPorId.filter(c => esPrimeraVez(c.comentarios))
+
+    // 5. Cruzar con pacientes creados HOY en Dentalink (filtro más preciso)
     let citasNuevas = citasPrimeraVez
-    let metodo = 'primera_vez_only'
+    let metodo = 'id+primera_vez'
 
     try {
-      // Intentar con fecha_creacion
       const pacientesNuevos = await fetchPaginado<DentalinkPaciente>('/pacientes', {
         fecha_creacion: [
           { gte: `${fecha} 00:00:00` },
@@ -108,11 +140,12 @@ export async function GET(request: Request) {
       if (pacientesNuevos.length > 0) {
         const idsPacientesHoy = new Set(pacientesNuevos.map(p => p.id))
         const filtradas = citasPrimeraVez.filter(c => idsPacientesHoy.has(c.id_paciente))
-        citasNuevas = filtradas
-        metodo = 'pacientes_creados_hoy'
+        if (filtradas.length > 0) {
+          citasNuevas = filtradas
+          metodo = 'id+primera_vez+pacientes'
+        }
       }
     } catch {
-      // Si falla fecha_creacion, intentar con fecha_ingreso
       try {
         const pacientesNuevos = await fetchPaginado<DentalinkPaciente>('/pacientes', {
           fecha_ingreso: [
@@ -124,11 +157,13 @@ export async function GET(request: Request) {
         if (pacientesNuevos.length > 0) {
           const idsPacientesHoy = new Set(pacientesNuevos.map(p => p.id))
           const filtradas = citasPrimeraVez.filter(c => idsPacientesHoy.has(c.id_paciente))
-          citasNuevas = filtradas
-          metodo = 'pacientes_ingreso_hoy'
+          if (filtradas.length > 0) {
+            citasNuevas = filtradas
+            metodo = 'id+primera_vez+ingreso'
+          }
         }
       } catch {
-        // Ningún endpoint de pacientes funciona, usar solo primera vez
+        // Pacientes no disponible, queda id+primera_vez
       }
     }
 
@@ -158,7 +193,9 @@ export async function GET(request: Request) {
       fecha,
       total: agendados.length,
       total_modificados: citasHoy.length,
+      total_por_id: citasPorId.length,
       total_primera_vez: citasPrimeraVez.length,
+      max_id_anterior: maxIdAnterior,
       metodo,
       por_sede: porSede,
       por_origen: porOrigen,
