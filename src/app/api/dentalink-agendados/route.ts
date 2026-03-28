@@ -23,6 +23,33 @@ interface DentalinkCitaFull {
   fecha_actualizacion: string
 }
 
+/**
+ * Obtiene el max ID de citas de días anteriores para saber cuáles son nuevas.
+ * Busca hacia atrás hasta 7 días hasta encontrar citas actualizadas.
+ */
+async function getMaxIdAnterior(fecha: string): Promise<number> {
+  const d = new Date(fecha + 'T12:00:00')
+
+  for (let i = 1; i <= 7; i++) {
+    const prev = new Date(d)
+    prev.setDate(prev.getDate() - i)
+    const prevStr = prev.toISOString().split('T')[0]
+
+    const citas = await fetchPaginado<DentalinkCitaFull>('/citas', {
+      fecha_actualizacion: [
+        { gte: `${prevStr} 00:00:00` },
+        { lte: `${prevStr} 23:59:59` },
+      ],
+    })
+
+    if (citas.length > 0) {
+      return Math.max(...citas.map(c => c.id))
+    }
+  }
+
+  return 0
+}
+
 export async function GET(request: Request) {
   // Auth check: solo admin
   const supabase = await createServerClient()
@@ -47,13 +74,21 @@ export async function GET(request: Request) {
   }
 
   try {
-    // Traer citas actualizadas en esa fecha (proxy de "creadas ese día")
-    const citas = await fetchPaginado<DentalinkCitaFull>('/citas', {
+    // 1. Obtener max ID del día anterior (baseline)
+    const maxIdAnterior = await getMaxIdAnterior(fecha)
+
+    // 2. Traer citas actualizadas en la fecha seleccionada
+    const citasHoy = await fetchPaginado<DentalinkCitaFull>('/citas', {
       fecha_actualizacion: [
         { gte: `${fecha} 00:00:00` },
         { lte: `${fecha} 23:59:59` },
       ],
     })
+
+    // 3. Filtrar: solo citas con ID > maxIdAnterior (nuevas, no modificaciones)
+    const citasNuevas = maxIdAnterior > 0
+      ? citasHoy.filter(c => c.id > maxIdAnterior)
+      : citasHoy // fallback si no hay baseline
 
     // Detectar origen del comentario
     function detectarOrigen(comentario: string): string {
@@ -65,7 +100,7 @@ export async function GET(request: Request) {
       return 'Otro'
     }
 
-    const agendados = citas.map(c => ({
+    const agendados = citasNuevas.map(c => ({
       id: c.id,
       paciente: c.nombre_paciente?.trim() || 'Sin nombre',
       fecha_turno: c.fecha,
@@ -90,6 +125,8 @@ export async function GET(request: Request) {
     return NextResponse.json({
       fecha,
       total: agendados.length,
+      total_modificados: citasHoy.length,
+      max_id_anterior: maxIdAnterior,
       por_sede: porSede,
       por_origen: porOrigen,
       agendados,

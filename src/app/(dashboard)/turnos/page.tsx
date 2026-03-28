@@ -329,7 +329,7 @@ const ORIGEN_COLORS: Record<string, { bg: string; text: string }> = {
 
 function AgendadosTab() {
   const [fecha, setFecha] = useState(() => getArgentinaToday())
-  const [data, setData] = useState<{ total: number; por_sede: Record<string, number>; por_origen: Record<string, number>; agendados: Agendado[] } | null>(null)
+  const [data, setData] = useState<{ total: number; total_modificados?: number; max_id_anterior?: number; por_sede: Record<string, number>; por_origen: Record<string, number>; agendados: Agendado[] } | null>(null)
   const [loading, setLoading] = useState(true)
   const [sedeFilter, setSedeFilter] = useState('todas')
   const [busqueda, setBusqueda] = useState('')
@@ -533,6 +533,11 @@ function AgendadosTab() {
           <p className="text-xs text-text-muted mt-3">
             {agendados.length} turno{agendados.length !== 1 ? 's' : ''} dado{agendados.length !== 1 ? 's' : ''}
             {sedeFilter !== 'todas' ? ` en ${sedeFilter}` : ''} · Datos en tiempo real de Dentalink
+            {data.total_modificados != null && data.total_modificados !== data.total && (
+              <span className="ml-2 text-text-muted">
+                ({data.total_modificados} movimientos totales, {data.total} nuevos)
+              </span>
+            )}
           </p>
         </>
       )}
