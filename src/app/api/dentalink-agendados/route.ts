@@ -24,27 +24,31 @@ interface DentalinkCitaFull {
 }
 
 /**
- * Obtiene el max ID de citas de días anteriores para saber cuáles son nuevas.
- * Busca hacia atrás hasta 7 días hasta encontrar citas actualizadas.
+ * Obtiene el max ID de citas de los 7 días anteriores a la fecha.
+ * Usa una sola query con rango amplio para capturar todos los IDs creados
+ * recientemente, no solo los modificados en un día puntual.
  */
 async function getMaxIdAnterior(fecha: string): Promise<number> {
   const d = new Date(fecha + 'T12:00:00')
 
-  for (let i = 1; i <= 7; i++) {
-    const prev = new Date(d)
-    prev.setDate(prev.getDate() - i)
-    const prevStr = prev.toISOString().split('T')[0]
+  const yesterday = new Date(d)
+  yesterday.setDate(yesterday.getDate() - 1)
+  const yesterdayStr = yesterday.toISOString().split('T')[0]
 
-    const citas = await fetchPaginado<DentalinkCitaFull>('/citas', {
-      fecha_actualizacion: [
-        { gte: `${prevStr} 00:00:00` },
-        { lte: `${prevStr} 23:59:59` },
-      ],
-    })
+  const weekAgo = new Date(d)
+  weekAgo.setDate(weekAgo.getDate() - 14)
+  const weekAgoStr = weekAgo.toISOString().split('T')[0]
 
-    if (citas.length > 0) {
-      return Math.max(...citas.map(c => c.id))
-    }
+  // Una sola query: todas las citas actualizadas en los últimos 14 días (excluyendo hoy)
+  const citas = await fetchPaginado<DentalinkCitaFull>('/citas', {
+    fecha_actualizacion: [
+      { gte: `${weekAgoStr} 00:00:00` },
+      { lte: `${yesterdayStr} 23:59:59` },
+    ],
+  })
+
+  if (citas.length > 0) {
+    return Math.max(...citas.map(c => c.id))
   }
 
   return 0
