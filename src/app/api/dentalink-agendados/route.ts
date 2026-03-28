@@ -23,35 +23,37 @@ interface DentalinkCitaFull {
   fecha_actualizacion: string
 }
 
-/**
- * Obtiene el max ID de citas de los 7 días anteriores a la fecha.
- * Usa una sola query con rango amplio para capturar todos los IDs creados
- * recientemente, no solo los modificados en un día puntual.
- */
-async function getMaxIdAnterior(fecha: string): Promise<number> {
-  const d = new Date(fecha + 'T12:00:00')
+interface DentalinkPaciente {
+  id: number
+  nombre: string
+  apellido: string
+  fecha_creacion?: string
+  fecha_ingreso?: string
+}
 
-  const yesterday = new Date(d)
-  yesterday.setDate(yesterday.getDate() - 1)
-  const yesterdayStr = yesterday.toISOString().split('T')[0]
+function esPrimeraVez(comentario: string): boolean {
+  const c = (comentario || '').toLowerCase()
+  return (
+    c.includes('primera vez') ||
+    c.includes('1ra vez') ||
+    c.includes('1° vez') ||
+    c.includes('1era vez') ||
+    c.includes('primer vez') ||
+    c.includes('pv') ||
+    c.includes('primera consulta') ||
+    c.includes('paciente nuevo') ||
+    c.includes('pac nuevo') ||
+    c.includes('pac nueva')
+  )
+}
 
-  const weekAgo = new Date(d)
-  weekAgo.setDate(weekAgo.getDate() - 14)
-  const weekAgoStr = weekAgo.toISOString().split('T')[0]
-
-  // Una sola query: todas las citas actualizadas en los últimos 14 días (excluyendo hoy)
-  const citas = await fetchPaginado<DentalinkCitaFull>('/citas', {
-    fecha_actualizacion: [
-      { gte: `${weekAgoStr} 00:00:00` },
-      { lte: `${yesterdayStr} 23:59:59` },
-    ],
-  })
-
-  if (citas.length > 0) {
-    return Math.max(...citas.map(c => c.id))
-  }
-
-  return 0
+function detectarOrigen(comentario: string): string {
+  const c = (comentario || '').toLowerCase()
+  if (c.includes('ig') || c.includes('instagram')) return 'Instagram'
+  if (c.includes('web')) return 'Web'
+  if (c.includes('wp') || c.includes('whatsapp')) return 'WhatsApp'
+  if (c.includes('tel') || c.includes('llamad')) return 'Teléfono'
+  return 'Otro'
 }
 
 export async function GET(request: Request) {
@@ -78,10 +80,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    // 1. Obtener max ID del día anterior (baseline)
-    const maxIdAnterior = await getMaxIdAnterior(fecha)
-
-    // 2. Traer citas actualizadas en la fecha seleccionada
+    // 1. Traer citas actualizadas en la fecha seleccionada
     const citasHoy = await fetchPaginado<DentalinkCitaFull>('/citas', {
       fecha_actualizacion: [
         { gte: `${fecha} 00:00:00` },
@@ -89,38 +88,48 @@ export async function GET(request: Request) {
       ],
     })
 
-    // 3. Filtrar: solo citas con ID > maxIdAnterior (nuevas, no modificaciones)
-    const citasPorId = maxIdAnterior > 0
-      ? citasHoy.filter(c => c.id > maxIdAnterior)
-      : citasHoy // fallback si no hay baseline
+    // 2. Filtrar solo "primera vez" por comentario
+    const citasPrimeraVez = citasHoy.filter(c => esPrimeraVez(c.comentarios))
 
-    // 4. Filtrar solo pacientes "primera vez" por comentario
-    function esPrimeraVez(comentario: string): boolean {
-      const c = (comentario || '').toLowerCase()
-      return (
-        c.includes('primera vez') ||
-        c.includes('1ra vez') ||
-        c.includes('1° vez') ||
-        c.includes('1era vez') ||
-        c.includes('primer vez') ||
-        c.includes('pv') ||
-        c.includes('primera consulta') ||
-        c.includes('paciente nuevo') ||
-        c.includes('pac nuevo') ||
-        c.includes('pac nueva')
-      )
-    }
+    // 3. Cruzar con pacientes creados HOY en Dentalink
+    //    Si es "primera vez", el paciente se creó el mismo día que se dio el turno
+    let citasNuevas = citasPrimeraVez
+    let metodo = 'primera_vez_only'
 
-    const citasNuevas = citasPorId.filter(c => esPrimeraVez(c.comentarios))
+    try {
+      // Intentar con fecha_creacion
+      const pacientesNuevos = await fetchPaginado<DentalinkPaciente>('/pacientes', {
+        fecha_creacion: [
+          { gte: `${fecha} 00:00:00` },
+          { lte: `${fecha} 23:59:59` },
+        ],
+      })
 
-    // Detectar origen del comentario
-    function detectarOrigen(comentario: string): string {
-      const c = (comentario || '').toLowerCase()
-      if (c.includes('ig') || c.includes('instagram')) return 'Instagram'
-      if (c.includes('web')) return 'Web'
-      if (c.includes('wp') || c.includes('whatsapp')) return 'WhatsApp'
-      if (c.includes('tel') || c.includes('llamad')) return 'Teléfono'
-      return 'Otro'
+      if (pacientesNuevos.length > 0) {
+        const idsPacientesHoy = new Set(pacientesNuevos.map(p => p.id))
+        const filtradas = citasPrimeraVez.filter(c => idsPacientesHoy.has(c.id_paciente))
+        citasNuevas = filtradas
+        metodo = 'pacientes_creados_hoy'
+      }
+    } catch {
+      // Si falla fecha_creacion, intentar con fecha_ingreso
+      try {
+        const pacientesNuevos = await fetchPaginado<DentalinkPaciente>('/pacientes', {
+          fecha_ingreso: [
+            { gte: `${fecha} 00:00:00` },
+            { lte: `${fecha} 23:59:59` },
+          ],
+        })
+
+        if (pacientesNuevos.length > 0) {
+          const idsPacientesHoy = new Set(pacientesNuevos.map(p => p.id))
+          const filtradas = citasPrimeraVez.filter(c => idsPacientesHoy.has(c.id_paciente))
+          citasNuevas = filtradas
+          metodo = 'pacientes_ingreso_hoy'
+        }
+      } catch {
+        // Ningún endpoint de pacientes funciona, usar solo primera vez
+      }
     }
 
     const agendados = citasNuevas.map(c => ({
@@ -149,8 +158,8 @@ export async function GET(request: Request) {
       fecha,
       total: agendados.length,
       total_modificados: citasHoy.length,
-      total_ids_nuevos: citasPorId.length,
-      max_id_anterior: maxIdAnterior,
+      total_primera_vez: citasPrimeraVez.length,
+      metodo,
       por_sede: porSede,
       por_origen: porOrigen,
       agendados,
