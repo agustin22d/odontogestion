@@ -14,6 +14,7 @@ import {
   LogOut,
   ChevronLeft,
   Menu,
+  Settings,
 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -27,9 +28,10 @@ interface NavItem {
 const adminNavItems: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard size={20} />, roles: ['admin'] },
   { label: 'Turnos', href: '/turnos', icon: <CalendarDays size={20} />, roles: ['admin'] },
-  { label: 'Finanzas', href: '/finanzas', icon: <Wallet size={20} />, roles: ['admin', 'rolC'] },
+  { label: 'Finanzas', href: '/finanzas', icon: <Wallet size={20} />, roles: ['admin'] },
   { label: 'Stock', href: '/stock', icon: <Package size={20} />, roles: ['admin', 'rolC'] },
   { label: 'Empleados', href: '/empleados', icon: <Users size={20} />, roles: ['admin'] },
+  { label: 'Configuración', href: '/configuracion', icon: <Settings size={20} />, roles: ['admin'] },
 ]
 
 const employeeNavItems: NavItem[] = [

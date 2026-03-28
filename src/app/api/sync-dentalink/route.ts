@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { createClient as createServerClient } from '@/lib/supabase/server'
 import { fetchPaginado, mapEstadoDentalink, mapOrigenDentalink } from '@/lib/dentalink'
 import type { DentalinkCita } from '@/lib/dentalink'
 
@@ -23,6 +24,20 @@ const SUCURSAL_MAP: Record<number, string> = {
 
 export async function POST(request: Request) {
   try {
+    // Auth check: solo admin puede sincronizar
+    const supabaseAuth = await createServerClient()
+    const { data: { user: authUser } } = await supabaseAuth.auth.getUser()
+    if (!authUser) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+    }
+    const { data: profile } = await supabaseAuth
+      .from('users')
+      .select('rol')
+      .eq('id', authUser.id)
+      .single()
+    if (!profile || profile.rol !== 'admin') {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+    }
     const body = await request.json().catch(() => ({}))
     const diasAtras = body.dias || 7
     const diasAdelante = body.diasAdelante || 30

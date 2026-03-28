@@ -1,4 +1,8 @@
-export default function PorCobrarPage() {
+import { requireRole } from '@/lib/auth-guard'
+
+export default async function PorCobrarPage() {
+  await requireRole('admin')
+
   return (
     <div>
       <h1 className="font-display text-2xl font-semibold text-text-primary mb-1">Por Cobrar</h1>
