@@ -162,11 +162,39 @@ export async function GET(request: Request) {
       porOrigen[a.origen] = (porOrigen[a.origen] || 0) + 1
     })
 
+    // Debug: consultar una cita individual para ver todos los campos disponibles
+    let debugCita: Record<string, unknown> | null = null
+    if (citasNuevas.length > 0) {
+      try {
+        const res = await fetch(`${API_BASE}/citas/${citasNuevas[0].id}`, {
+          headers: {
+            'Authorization': `Token ${API_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+        })
+        if (res.ok) {
+          const json = await res.json()
+          const citaData = json.data || json
+          debugCita = { todos_los_campos: Object.keys(citaData) }
+          // Buscar campos que parezcan de usuario/creador
+          const camposUsuario = Object.keys(citaData).filter(k =>
+            k.includes('usuario') || k.includes('user') || k.includes('creado') || k.includes('agend')
+          )
+          if (camposUsuario.length > 0) {
+            const valores: Record<string, unknown> = {}
+            camposUsuario.forEach(k => { valores[k] = citaData[k] })
+            debugCita.campos_usuario = valores
+          }
+        }
+      } catch { /* ignore */ }
+    }
+
     return NextResponse.json({
       fecha,
       total: agendados.length,
       total_modificados: citasHoy.length,
       total_primera_vez: citasPrimeraVez.length,
+      debug_cita: debugCita,
       metodo,
       debug_pacientes: debugPacientes,
       por_sede: porSede,
