@@ -320,9 +320,10 @@ function AgendadosTab() {
         dias.push(d.toISOString().split('T')[0])
       }
 
-      // Secuencial para no saturar la API de Dentalink
+      // Secuencial con delay para no saturar la API de Dentalink
       const results: { fecha: string; total: number }[] = []
-      for (const f of dias) {
+      for (let idx = 0; idx < dias.length; idx++) {
+        const f = dias[idx]
         try {
           const res = await fetch(`/api/dentalink-agendados?fecha=${f}`)
           if (!res.ok) { results.push({ fecha: f, total: 0 }); continue }
@@ -330,6 +331,10 @@ function AgendadosTab() {
           results.push({ fecha: f, total: json.total || 0 })
         } catch {
           results.push({ fecha: f, total: 0 })
+        }
+        // Delay entre requests para no saturar Dentalink
+        if (idx < dias.length - 1) {
+          await new Promise(r => setTimeout(r, 500))
         }
       }
       setHistorial(results)
@@ -437,13 +442,13 @@ function AgendadosTab() {
         <>
           {/* Summary: total + por sede + mini gráfico */}
           <div className="flex flex-col lg:flex-row gap-4 mb-4">
-            <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="flex-1 flex flex-wrap gap-3">
               <StatCard icon={<CalendarPlus size={18} />} label="Turnos dados" value={data.total} color="text-text-primary" />
               {Object.entries(data.por_sede).sort((a, b) => b[1] - a[1]).map(([sede, count]) => (
                 <button
                   key={sede}
                   onClick={() => setSedeFilter(sedeFilter === sede ? 'todas' : sede)}
-                  className={`rounded-xl border p-3 text-left transition-all ${
+                  className={`rounded-xl border p-3 text-left transition-all min-w-[120px] ${
                     sedeFilter === sede ? 'bg-green-50 border-green-200 ring-2 ring-green-primary/20' : 'bg-surface border-border hover:border-gray-300'
                   }`}
                 >
@@ -460,10 +465,10 @@ function AgendadosTab() {
             {historial.length > 0 && (
               <div className="bg-surface rounded-xl border border-border p-4 lg:w-64">
                 <p className="text-xs font-medium text-text-muted uppercase tracking-wide mb-2">Últimos días</p>
-                <div className="flex items-end gap-1 h-16">
+                <div className="flex items-end gap-1" style={{ height: 48 }}>
                   {historial.map((h) => {
                     const max = Math.max(...historial.map(x => x.total), 1)
-                    const pct = (h.total / max) * 100
+                    const barHeight = Math.max((h.total / max) * 40, h.total > 0 ? 4 : 2)
                     const d = new Date(h.fecha + 'T12:00:00')
                     const dayLabel = d.toLocaleDateString('es-AR', { weekday: 'short' }).slice(0, 2)
                     const isSelected = h.fecha === fecha
@@ -477,7 +482,7 @@ function AgendadosTab() {
                         <span className="text-[10px] font-medium text-text-muted">{h.total}</span>
                         <div
                           className={`w-full rounded-sm transition-all ${isSelected ? 'bg-green-primary' : 'bg-green-primary/30 group-hover:bg-green-primary/50'}`}
-                          style={{ height: `${Math.max(pct, 8)}%` }}
+                          style={{ height: barHeight }}
                         />
                         <span className={`text-[9px] ${isSelected ? 'text-green-primary font-bold' : 'text-text-muted'}`}>{dayLabel}</span>
                       </button>
