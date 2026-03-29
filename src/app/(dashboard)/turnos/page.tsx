@@ -45,7 +45,7 @@ export default function TurnosPage() {
         <p className="text-sm text-text-secondary">Agenda diaria y seguimiento de turnos agendados</p>
       </div>
 
-      {/* Tabs */}
+      {/* Tabs — solo admin ve "Turnos dados" */}
       {user?.rol === 'admin' && (
         <div className="flex items-center gap-1 bg-surface border border-border rounded-lg p-1 mb-6 w-fit">
           <button
@@ -74,7 +74,7 @@ export default function TurnosPage() {
       )}
 
       {activeTab === 'agenda' && <AgendaTab />}
-      {activeTab === 'agendados' && <AgendadosTab />}
+      {activeTab === 'agendados' && user?.rol === 'admin' && <AgendadosTab />}
     </div>
   )
 }
@@ -109,10 +109,6 @@ function AgendaTab() {
 
     if (sedeFilter !== 'todas') {
       query = query.eq('sede_id', sedeFilter)
-    }
-
-    if (user?.rol === 'rolC' && user.sede_id) {
-      query = query.eq('sede_id', user.sede_id)
     }
 
     const { data } = await query
@@ -202,28 +198,26 @@ function AgendaTab() {
         <span className="text-sm text-text-secondary capitalize">{formatFecha(fecha)}</span>
 
         <div className="flex items-center gap-2 sm:ml-auto">
+          <Filter size={14} className="text-text-muted" />
+          <select
+            value={sedeFilter}
+            onChange={(e) => setSedeFilter(e.target.value)}
+            className="text-sm border border-border rounded-lg px-3 py-1.5 bg-surface text-text-primary focus:outline-none focus:border-green-primary"
+          >
+            <option value="todas">Todas las sedes</option>
+            {sedes.map(s => (
+              <option key={s.id} value={s.id}>{s.nombre}</option>
+            ))}
+          </select>
           {user?.rol === 'admin' && (
-            <>
-              <Filter size={14} className="text-text-muted" />
-              <select
-                value={sedeFilter}
-                onChange={(e) => setSedeFilter(e.target.value)}
-                className="text-sm border border-border rounded-lg px-3 py-1.5 bg-surface text-text-primary focus:outline-none focus:border-green-primary"
-              >
-                <option value="todas">Todas las sedes</option>
-                {sedes.map(s => (
-                  <option key={s.id} value={s.id}>{s.nombre}</option>
-                ))}
-              </select>
-              <button
-                onClick={handleSync}
-                disabled={syncing}
-                className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-primary hover:bg-green-dark text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
-              >
-                <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
-                {syncing ? 'Sync...' : 'Sync'}
-              </button>
-            </>
+            <button
+              onClick={handleSync}
+              disabled={syncing}
+              className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-primary hover:bg-green-dark text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+            >
+              <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
+              {syncing ? 'Sync...' : 'Sync'}
+            </button>
           )}
         </div>
       </div>
