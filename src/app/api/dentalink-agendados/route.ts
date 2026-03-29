@@ -119,27 +119,25 @@ export async function GET(request: Request) {
     // 2. Filtrar solo "primera vez" por comentario
     const citasPrimeraVez = citasHoy.filter(c => esPrimeraVez(c.comentarios))
 
-    // 3. Para cada cita "primera vez", consultar el paciente en Dentalink
-    //    y verificar que fue creado el mismo día (fecha seleccionada)
-    // 3. Para cada cita, consultar fecha_afiliacion del paciente en Dentalink
-    const debugPacientes: Record<number, string> = {}
-
+    // 3. Para cada cita "primera vez", consultar fecha_afiliacion del paciente
+    //    en paralelo (batches de 10 para no saturar la API)
     const citasConFecha: (DentalinkCitaFull & { fecha_afiliacion: string })[] = []
+    const BATCH_SIZE = 10
 
-    for (const cita of citasPrimeraVez) {
-      const paciente = await fetchPaciente(cita.id_paciente)
-      const fechaAlta = paciente ? getFechaAltaPaciente(paciente) : ''
-
-      debugPacientes[cita.id_paciente] = fechaAlta || 'sin_fecha'
-      citasConFecha.push({ ...cita, fecha_afiliacion: fechaAlta })
-
-      // Rate limiting entre consultas
-      await new Promise(r => setTimeout(r, 200))
+    for (let i = 0; i < citasPrimeraVez.length; i += BATCH_SIZE) {
+      const batch = citasPrimeraVez.slice(i, i + BATCH_SIZE)
+      const results = await Promise.all(
+        batch.map(async (cita) => {
+          const paciente = await fetchPaciente(cita.id_paciente)
+          const fechaAlta = paciente ? getFechaAltaPaciente(paciente) : ''
+          return { ...cita, fecha_afiliacion: fechaAlta }
+        })
+      )
+      citasConFecha.push(...results)
     }
 
     // 4. Filtrar: solo pacientes afiliados/dados de alta en la fecha seleccionada
     const citasNuevas = citasConFecha.filter(c => c.fecha_afiliacion === fecha)
-    const metodo = 'primera_vez+fecha_afiliacion'
 
     const agendados = citasNuevas.map(c => ({
       id: c.id,
@@ -167,9 +165,6 @@ export async function GET(request: Request) {
       fecha,
       total: agendados.length,
       total_modificados: citasHoy.length,
-      total_primera_vez: citasPrimeraVez.length,
-      metodo,
-      debug_pacientes: debugPacientes,
       por_sede: porSede,
       por_origen: porOrigen,
       agendados,

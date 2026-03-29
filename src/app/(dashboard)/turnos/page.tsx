@@ -305,6 +305,37 @@ function AgendadosTab() {
   const [loading, setLoading] = useState(true)
   const [sedeFilter, setSedeFilter] = useState('todas')
   const [busqueda, setBusqueda] = useState('')
+  const [historial, setHistorial] = useState<{ fecha: string; total: number }[]>([])
+
+  // Fetch historial 7 días (en paralelo, no bloquea)
+  useEffect(() => {
+    const fetchHistorial = async () => {
+      const hoy = new Date(getArgentinaToday() + 'T12:00:00')
+      const dias: string[] = []
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(hoy)
+        d.setDate(d.getDate() - i)
+        // Skip weekends
+        if (d.getDay() === 0 || d.getDay() === 6) continue
+        dias.push(d.toISOString().split('T')[0])
+      }
+
+      const results = await Promise.all(
+        dias.map(async (f) => {
+          try {
+            const res = await fetch(`/api/dentalink-agendados?fecha=${f}`)
+            if (!res.ok) return { fecha: f, total: 0 }
+            const json = await res.json()
+            return { fecha: f, total: json.total || 0 }
+          } catch {
+            return { fecha: f, total: 0 }
+          }
+        })
+      )
+      setHistorial(results)
+    }
+    fetchHistorial()
+  }, [])
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -404,24 +435,57 @@ function AgendadosTab() {
         </div>
       ) : (
         <>
-          {/* Summary: total + por sede */}
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-4">
-            <StatCard icon={<CalendarPlus size={18} />} label="Turnos dados" value={data.total} color="text-text-primary" />
-            {Object.entries(data.por_sede).sort((a, b) => b[1] - a[1]).map(([sede, count]) => (
-              <button
-                key={sede}
-                onClick={() => setSedeFilter(sedeFilter === sede ? 'todas' : sede)}
-                className={`rounded-xl border p-3 text-left transition-all ${
-                  sedeFilter === sede ? 'bg-green-50 border-green-200 ring-2 ring-green-primary/20' : 'bg-surface border-border hover:border-gray-300'
-                }`}
-              >
-                <div className="flex items-center gap-1.5 mb-0.5">
-                  <MapPin size={14} className="text-text-muted" />
-                  <span className="text-lg font-bold text-text-primary">{count}</span>
+          {/* Summary: total + por sede + mini gráfico */}
+          <div className="flex flex-col lg:flex-row gap-4 mb-4">
+            <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-3">
+              <StatCard icon={<CalendarPlus size={18} />} label="Turnos dados" value={data.total} color="text-text-primary" />
+              {Object.entries(data.por_sede).sort((a, b) => b[1] - a[1]).map(([sede, count]) => (
+                <button
+                  key={sede}
+                  onClick={() => setSedeFilter(sedeFilter === sede ? 'todas' : sede)}
+                  className={`rounded-xl border p-3 text-left transition-all ${
+                    sedeFilter === sede ? 'bg-green-50 border-green-200 ring-2 ring-green-primary/20' : 'bg-surface border-border hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <MapPin size={14} className="text-text-muted" />
+                    <span className="text-lg font-bold text-text-primary">{count}</span>
+                  </div>
+                  <p className="text-xs font-medium text-text-secondary truncate">{sede}</p>
+                </button>
+              ))}
+            </div>
+
+            {/* Mini gráfico últimos 7 días hábiles */}
+            {historial.length > 0 && (
+              <div className="bg-surface rounded-xl border border-border p-4 lg:w-64">
+                <p className="text-xs font-medium text-text-muted uppercase tracking-wide mb-2">Últimos días</p>
+                <div className="flex items-end gap-1 h-16">
+                  {historial.map((h) => {
+                    const max = Math.max(...historial.map(x => x.total), 1)
+                    const pct = (h.total / max) * 100
+                    const d = new Date(h.fecha + 'T12:00:00')
+                    const dayLabel = d.toLocaleDateString('es-AR', { weekday: 'short' }).slice(0, 2)
+                    const isSelected = h.fecha === fecha
+                    return (
+                      <button
+                        key={h.fecha}
+                        onClick={() => setFecha(h.fecha)}
+                        className="flex-1 flex flex-col items-center gap-0.5 group"
+                        title={`${h.fecha}: ${h.total} turnos`}
+                      >
+                        <span className="text-[10px] font-medium text-text-muted">{h.total}</span>
+                        <div
+                          className={`w-full rounded-sm transition-all ${isSelected ? 'bg-green-primary' : 'bg-green-primary/30 group-hover:bg-green-primary/50'}`}
+                          style={{ height: `${Math.max(pct, 8)}%` }}
+                        />
+                        <span className={`text-[9px] ${isSelected ? 'text-green-primary font-bold' : 'text-text-muted'}`}>{dayLabel}</span>
+                      </button>
+                    )
+                  })}
                 </div>
-                <p className="text-xs font-medium text-text-secondary truncate">{sede}</p>
-              </button>
-            ))}
+              </div>
+            )}
           </div>
 
 
