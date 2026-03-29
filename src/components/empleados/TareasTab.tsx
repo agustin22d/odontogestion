@@ -125,6 +125,14 @@ export default function TareasTab({ isAdmin }: { isAdmin: boolean }) {
     const fechaAyer = ayer.toISOString().split('T')[0]
 
     if (plantillas.length > 0) {
+      // Filtrar plantillas por el rol del empleado seleccionado
+      const empRol = isAdmin
+        ? empleados.find(e => e.id === userId)?.rol || ''
+        : user?.rol || ''
+      const plantillasEmp = empRol
+        ? plantillas.filter(p => p.rol === empRol)
+        : plantillas
+
       const { data: ayerAllData } = await supabase
         .from('tarea_completadas')
         .select('plantilla_id, completada')
@@ -137,7 +145,7 @@ export default function TareasTab({ isAdmin }: { isAdmin: boolean }) {
         const ayerIncompletas = ayerAllData
           .filter((d: { completada: boolean }) => !d.completada)
           .map((d: { plantilla_id: number }) => d.plantilla_id)
-        const nuncaCreadas = plantillas.filter(p => !ayerAllIds.includes(p.id)).map(p => p.id)
+        const nuncaCreadas = plantillasEmp.filter(p => !ayerAllIds.includes(p.id)).map(p => p.id)
         setPendientesAyer([...ayerIncompletas, ...nuncaCreadas])
       } else {
         setPendientesAyer([])
@@ -146,7 +154,7 @@ export default function TareasTab({ isAdmin }: { isAdmin: boolean }) {
 
     setLoading(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin, selectedEmpleado, user?.id, fecha, plantillas])
+  }, [isAdmin, selectedEmpleado, user?.id, user?.rol, fecha, plantillas, empleados])
 
   useEffect(() => { fetchPlantillas() }, [fetchPlantillas])
   useEffect(() => { fetchEmpleados() }, [fetchEmpleados])
