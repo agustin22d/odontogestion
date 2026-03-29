@@ -22,6 +22,7 @@ import {
 } from 'lucide-react'
 import type { Turno, Sede } from '@/types/database'
 import { getArgentinaToday } from '@/lib/utils/dates'
+import SyncButton from '@/components/SyncButton'
 
 type TurnoConSede = Turno & { sedes: Sede }
 type TabId = 'agenda' | 'agendados'
@@ -88,7 +89,6 @@ function AgendaTab() {
   const [turnos, setTurnos] = useState<TurnoConSede[]>([])
   const [sedes, setSedes] = useState<Sede[]>([])
   const [loading, setLoading] = useState(true)
-  const [syncing, setSyncing] = useState(false)
   const [fecha, setFecha] = useState(() => getArgentinaToday())
   const [sedeFilter, setSedeFilter] = useState<string>('todas')
   const [busqueda, setBusqueda] = useState('')
@@ -120,26 +120,6 @@ function AgendaTab() {
   useEffect(() => { fetchSedes() }, [fetchSedes])
   useEffect(() => { fetchTurnos() }, [fetchTurnos])
 
-  const handleSync = async () => {
-    setSyncing(true)
-    try {
-      const res = await fetch('/api/sync-dentalink', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dias: 7 }),
-      })
-      const data = await res.json()
-      if (data.error) {
-        alert('Error: ' + data.error)
-      } else {
-        alert(`Sincronizado: ${data.insertados} turnos (${data.rango})`)
-        fetchTurnos()
-      }
-    } catch {
-      alert('Error al sincronizar')
-    }
-    setSyncing(false)
-  }
 
   const changeDate = (offset: number) => {
     const d = new Date(fecha + 'T12:00:00')
@@ -210,14 +190,11 @@ function AgendaTab() {
             ))}
           </select>
           {user?.rol === 'admin' && (
-            <button
-              onClick={handleSync}
-              disabled={syncing}
-              className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-primary hover:bg-green-dark text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
-            >
-              <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
-              {syncing ? 'Sync...' : 'Sync'}
-            </button>
+            <SyncButton
+              label="Sync Turnos"
+              endpoints={[{ url: '/api/sync-dentalink', body: { dias: 7 } }]}
+              onDone={() => fetchTurnos()}
+            />
           )}
         </div>
       </div>

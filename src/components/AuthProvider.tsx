@@ -38,6 +38,20 @@ export function AuthProvider({ children, initialUser }: { children: React.ReactN
             .eq('id', authUser.id)
             .single()
           setUser(profile)
+
+          // Auto-sync Dentalink al iniciar sesión (admin only, solo en SIGNED_IN)
+          if (event === 'SIGNED_IN' && profile?.rol === 'admin') {
+            fetch('/api/sync-dentalink', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ dias: 7 }),
+            }).catch(() => {})
+            fetch('/api/sync-pagos', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ dias: 7 }),
+            }).catch(() => {})
+          }
         }
       }
     })

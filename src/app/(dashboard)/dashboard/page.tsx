@@ -17,6 +17,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recha
 import type { Sede } from '@/types/database'
 import { getArgentinaToday, getArgentinaDate, formatFechaHoyAR } from '@/lib/utils/dates'
 import EmpleadoDashboard from '@/components/empleados/EmpleadoDashboard'
+import SyncButton from '@/components/SyncButton'
 
 interface TurnoStats {
   total: number
@@ -221,7 +222,15 @@ function AdminDashboard() {
           <h1 className="font-display text-2xl font-semibold text-text-primary mb-1">Dashboard</h1>
           <p className="text-sm text-text-secondary capitalize">{formatFechaHoy()}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <SyncButton
+            label="Sync todo"
+            endpoints={[
+              { url: '/api/sync-dentalink', body: { dias: 7 } },
+              { url: '/api/sync-pagos', body: { dias: 7 } },
+            ]}
+            onDone={() => fetchDashboardData()}
+          />
           <Filter size={14} className="text-text-muted" />
           <select
             value={sedeFilter}

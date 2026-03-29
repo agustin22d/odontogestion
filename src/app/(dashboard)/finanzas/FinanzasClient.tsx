@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/components/AuthProvider'
+import SyncButton from '@/components/SyncButton'
 import {
   DollarSign,
   RefreshCw,
@@ -283,7 +284,6 @@ function CobranzasTab() {
   const [cobranzas, setCobranzas] = useState<CobranzaConSede[]>([])
   const [sedes, setSedes] = useState<Sede[]>([])
   const [loading, setLoading] = useState(true)
-  const [syncing, setSyncing] = useState(false)
   const [fecha, setFecha] = useState(() => getArgentinaToday())
   const [sedeFilter, setSedeFilter] = useState<string>('todas')
   const [showForm, setShowForm] = useState(false)
@@ -329,27 +329,6 @@ function CobranzasTab() {
 
   useEffect(() => { fetchSedes() }, [fetchSedes])
   useEffect(() => { fetchCobranzas() }, [fetchCobranzas])
-
-  const handleSync = async () => {
-    setSyncing(true)
-    try {
-      const res = await fetch('/api/sync-pagos', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dias: 7 }),
-      })
-      const data = await res.json()
-      if (data.error) {
-        alert('Error: ' + data.error)
-      } else {
-        alert(`Sincronizado: ${data.insertados} pagos (${data.rango})`)
-        fetchCobranzas()
-      }
-    } catch {
-      alert('Error al sincronizar pagos')
-    }
-    setSyncing(false)
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -416,14 +395,11 @@ function CobranzasTab() {
       {/* Actions */}
       <div className="flex items-center gap-2 mb-4">
         {user?.rol === 'admin' && (
-          <button
-            onClick={handleSync}
-            disabled={syncing}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-green-primary hover:bg-green-dark text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
-          >
-            <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
-            {syncing ? 'Sincronizando...' : 'Sync Pagos'}
-          </button>
+          <SyncButton
+            label="Sync Pagos"
+            endpoints={[{ url: '/api/sync-pagos', body: { dias: 7 } }]}
+            onDone={() => fetchCobranzas()}
+          />
         )}
         <button
           onClick={() => setShowForm(!showForm)}
