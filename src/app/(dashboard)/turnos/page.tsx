@@ -324,6 +324,7 @@ const ORIGEN_COLORS: Record<string, { bg: string; text: string }> = {
   Web: { bg: 'bg-blue-50', text: 'text-blue-600' },
   WhatsApp: { bg: 'bg-emerald-50', text: 'text-emerald-600' },
   'Teléfono': { bg: 'bg-amber-50', text: 'text-amber-600' },
+  Referido: { bg: 'bg-purple-50', text: 'text-purple-600' },
   Otro: { bg: 'bg-gray-50', text: 'text-gray-600' },
 }
 

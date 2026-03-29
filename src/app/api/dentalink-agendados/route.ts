@@ -43,10 +43,11 @@ function esPrimeraVez(comentario: string): boolean {
 
 function detectarOrigen(comentario: string): string {
   const c = (comentario || '').toLowerCase()
-  if (c.includes('ig') || c.includes('instagram')) return 'Instagram'
-  if (c.includes('web')) return 'Web'
-  if (c.includes('wp') || c.includes('whatsapp')) return 'WhatsApp'
-  if (c.includes('tel') || c.includes('llamad')) return 'Teléfono'
+  if (c.includes('ig') || c.includes('insta') || c.includes('instagram')) return 'Instagram'
+  if (c.includes('wp') || c.includes('ws') || c.includes('wsp') || c.includes('whatsapp') || c.includes('wapp')) return 'WhatsApp'
+  if (c.includes('web') || c.includes('pag') || c.includes('página') || c.includes('pagina')) return 'Web'
+  if (c.includes('tel') || c.includes('llamad') || c.includes('llamó') || c.includes('llamo')) return 'Teléfono'
+  if (c.includes('referi') || c.includes('conocido') || c.includes('recomend')) return 'Referido'
   return 'Otro'
 }
 
@@ -162,39 +163,11 @@ export async function GET(request: Request) {
       porOrigen[a.origen] = (porOrigen[a.origen] || 0) + 1
     })
 
-    // Debug: consultar una cita individual para ver todos los campos disponibles
-    let debugCita: Record<string, unknown> | null = null
-    if (citasNuevas.length > 0) {
-      try {
-        const res = await fetch(`${API_BASE}/citas/${citasNuevas[0].id}`, {
-          headers: {
-            'Authorization': `Token ${API_TOKEN}`,
-            'Content-Type': 'application/json',
-          },
-        })
-        if (res.ok) {
-          const json = await res.json()
-          const citaData = json.data || json
-          debugCita = { todos_los_campos: Object.keys(citaData) }
-          // Buscar campos que parezcan de usuario/creador
-          const camposUsuario = Object.keys(citaData).filter(k =>
-            k.includes('usuario') || k.includes('user') || k.includes('creado') || k.includes('agend')
-          )
-          if (camposUsuario.length > 0) {
-            const valores: Record<string, unknown> = {}
-            camposUsuario.forEach(k => { valores[k] = citaData[k] })
-            debugCita.campos_usuario = valores
-          }
-        }
-      } catch { /* ignore */ }
-    }
-
     return NextResponse.json({
       fecha,
       total: agendados.length,
       total_modificados: citasHoy.length,
       total_primera_vez: citasPrimeraVez.length,
-      debug_cita: debugCita,
       metodo,
       debug_pacientes: debugPacientes,
       por_sede: porSede,
