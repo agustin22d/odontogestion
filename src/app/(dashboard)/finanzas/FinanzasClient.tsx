@@ -358,8 +358,8 @@ function CobranzasTab() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!formData.paciente) return
-    const sedeIds = formData.sedeMode === 'una' ? formData.sede_ids.slice(0, 1) : formData.sede_ids
-    if (sedeIds.length === 0) return
+    // General = array vacío (todas), seleccionar = las elegidas
+    const sedeIds = formData.sedeMode === 'una' ? [] : formData.sede_ids
 
     const isUSD = formData.moneda === 'USD'
     let montoARS: number
@@ -379,7 +379,7 @@ function CobranzasTab() {
     setSaving(true)
     const { error } = await supabase.from('cobranzas').insert({
       fecha,
-      sede_id: sedeIds[0],
+      sede_id: sedeIds.length > 0 ? sedeIds[0] : null,
       sede_ids: sedeIds,
       user_id: user?.id,
       paciente: formData.paciente,
@@ -430,13 +430,13 @@ function CobranzasTab() {
     return d.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })
   }
 
-  // Client-side sede filter
+  // Client-side sede filter: include general (empty sede_ids) + matching entries
   const cobranzasFiltradas = sedeFilter === 'todas'
     ? cobranzas
     : cobranzas.filter(c => {
         const ids = c.sede_ids || []
-        if (ids.length > 0) return ids.includes(sedeFilter)
-        return c.sede_id === sedeFilter
+        if (ids.length === 0) return !c.sede_id || c.sede_id === sedeFilter
+        return ids.includes(sedeFilter)
       })
 
   const totalCobrado = cobranzasFiltradas.reduce((s, c) => s + Number(c.monto), 0)
@@ -445,24 +445,32 @@ function CobranzasTab() {
     porTipo[c.tipo_pago] = (porTipo[c.tipo_pago] || 0) + Number(c.monto)
   })
 
-  // Per-sede totals (proporcional)
+  // Per-sede totals (proporcional) — same logic as gastos
   const porSedeCobranza: Record<string, number> = {}
   cobranzas.forEach(c => {
     const monto = Number(c.monto)
     const ids = c.sede_ids || []
-    if (ids.length > 1) {
+    if (ids.length === 0) {
+      // General: dividir entre todas las sedes
+      sedes.forEach(s => {
+        porSedeCobranza[s.id] = (porSedeCobranza[s.id] || 0) + monto / sedes.length
+      })
+    } else {
+      // Dividir entre las sedes seleccionadas
       ids.forEach((sid: string) => {
         porSedeCobranza[sid] = (porSedeCobranza[sid] || 0) + monto / ids.length
       })
-    } else {
-      const sid = ids[0] || c.sede_id
-      if (sid) porSedeCobranza[sid] = (porSedeCobranza[sid] || 0) + monto
     }
   })
 
   const getCobranzaSedeLabel = (c: CobranzaConSede): string => {
     const ids = c.sede_ids || []
-    if (ids.length === 0) return c.sedes?.nombre || '\u2014'
+    if (ids.length === 0) {
+      // Old entries without sede_ids: fall back to sede join
+      if (c.sedes?.nombre) return c.sedes.nombre
+      return 'General'
+    }
+    if (ids.length === sedes.length) return 'Todas'
     if (ids.length === 1) return sedes.find(s => s.id === ids[0])?.nombre || '\u2014'
     return ids.map(id => sedes.find(s => s.id === id)?.nombre || '').filter(Boolean).join(', ')
   }
@@ -612,16 +620,16 @@ function CobranzasTab() {
               </select>
             </div>
             <div className="sm:col-span-2 lg:col-span-3">
-              <label className="block text-xs font-medium text-text-secondary mb-1">Sedes *</label>
+              <label className="block text-xs font-medium text-text-secondary mb-1">Sedes</label>
               <div className="flex flex-wrap items-center gap-3">
                 <label className="flex items-center gap-1.5 text-sm cursor-pointer">
                   <input
                     type="radio"
                     checked={formData.sedeMode === 'una'}
-                    onChange={() => setFormData({ ...formData, sedeMode: 'una', sede_ids: formData.sede_ids.slice(0, 1) })}
+                    onChange={() => setFormData({ ...formData, sedeMode: 'una', sede_ids: [] })}
                     className="accent-green-primary"
                   />
-                  <span className="text-text-primary">Una sede</span>
+                  <span className="text-text-primary">General (todas)</span>
                 </label>
                 <label className="flex items-center gap-1.5 text-sm cursor-pointer">
                   <input
@@ -630,41 +638,38 @@ function CobranzasTab() {
                     onChange={() => setFormData({ ...formData, sedeMode: 'varias' })}
                     className="accent-green-primary"
                   />
-                  <span className="text-text-primary">Dividir entre sedes</span>
+                  <span className="text-text-primary">Seleccionar sedes</span>
                 </label>
-                <div className="flex flex-wrap gap-2 ml-2">
-                  {sedes.map(s => {
-                    const checked = formData.sede_ids.includes(s.id)
-                    return (
-                      <label
-                        key={s.id}
-                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium cursor-pointer border transition-colors ${
-                          checked
-                            ? 'bg-green-100 border-green-300 text-green-700'
-                            : 'bg-beige border-border text-text-secondary hover:border-gray-300'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => {
-                            let newIds: string[]
-                            if (formData.sedeMode === 'una') {
-                              newIds = checked ? [] : [s.id]
-                            } else {
-                              newIds = checked
+                {formData.sedeMode === 'varias' && (
+                  <div className="flex flex-wrap gap-2 ml-2">
+                    {sedes.map(s => {
+                      const checked = formData.sede_ids.includes(s.id)
+                      return (
+                        <label
+                          key={s.id}
+                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium cursor-pointer border transition-colors ${
+                            checked
+                              ? 'bg-green-100 border-green-300 text-green-700'
+                              : 'bg-beige border-border text-text-secondary hover:border-gray-300'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {
+                              const newIds = checked
                                 ? formData.sede_ids.filter(id => id !== s.id)
                                 : [...formData.sede_ids, s.id]
-                            }
-                            setFormData({ ...formData, sede_ids: newIds })
-                          }}
-                          className="hidden"
-                        />
-                        {s.nombre}
-                      </label>
-                    )
-                  })}
-                </div>
+                              setFormData({ ...formData, sede_ids: newIds })
+                            }}
+                            className="hidden"
+                          />
+                          {s.nombre}
+                        </label>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             </div>
             <div>
@@ -677,20 +682,11 @@ function CobranzasTab() {
               />
             </div>
           </div>
-          <div className="flex items-center gap-4 mt-4">
-            <label className="flex items-center gap-2 text-sm text-text-secondary cursor-pointer">
-              <input
-                type="checkbox"
-                checked={formData.es_cuota}
-                onChange={e => setFormData({ ...formData, es_cuota: e.target.checked })}
-                className="rounded border-border"
-              />
-              Es cuota
-            </label>
+          <div className="flex justify-end mt-4">
             <button
               type="submit"
               disabled={saving}
-              className="ml-auto px-5 py-2 bg-green-primary hover:bg-green-dark text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+              className="px-5 py-2 bg-green-primary hover:bg-green-dark text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
             >
               {saving ? 'Guardando...' : 'Guardar'}
             </button>
