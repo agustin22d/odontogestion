@@ -72,28 +72,14 @@ async function fetchPaciente(idPaciente: number): Promise<Record<string, unknown
 }
 
 /**
- * Extrae la fecha (YYYY-MM-DD) de creación de un paciente.
- * Prueba varios campos posibles que Dentalink podría usar.
+ * Extrae la fecha (YYYY-MM-DD) de afiliación/alta del paciente en Dentalink.
  */
-function getFechaCreacionPaciente(paciente: Record<string, unknown>): string {
-  // Probar los campos más comunes
-  const campos = [
-    'fecha_creacion',
-    'fecha_ingreso',
-    'created_at',
-    'fecha_registro',
-    'fecha_alta',
-    'creacion',
-  ]
-
-  for (const campo of campos) {
-    const valor = paciente[campo]
-    if (valor && typeof valor === 'string') {
-      // Puede venir como "2026-03-28 10:30:00" o "2026-03-28"
-      return valor.split(' ')[0].split('T')[0]
-    }
+function getFechaAltaPaciente(paciente: Record<string, unknown>): string {
+  const valor = paciente['fecha_afiliacion']
+  if (valor && typeof valor === 'string') {
+    // Puede venir como "2026-03-28 10:30:00" o "2026-03-28"
+    return valor.split(' ')[0].split('T')[0]
   }
-
   return ''
 }
 
@@ -134,57 +120,25 @@ export async function GET(request: Request) {
 
     // 3. Para cada cita "primera vez", consultar el paciente en Dentalink
     //    y verificar que fue creado el mismo día (fecha seleccionada)
-    let metodo = 'primera_vez_only'
-    let campoFechaDetectado = ''
-    const debugPacientes: Record<number, unknown> = {}
+    // 3. Para cada cita, consultar fecha_afiliacion del paciente en Dentalink
+    const debugPacientes: Record<number, string> = {}
 
-    // Consultar pacientes (con rate limiting)
-    const citasConPaciente: (DentalinkCitaFull & { paciente_creado_hoy: boolean })[] = []
+    const citasConFecha: (DentalinkCitaFull & { fecha_afiliacion: string })[] = []
 
     for (const cita of citasPrimeraVez) {
       const paciente = await fetchPaciente(cita.id_paciente)
+      const fechaAlta = paciente ? getFechaAltaPaciente(paciente) : ''
 
-      if (paciente) {
-        const fechaCreacion = getFechaCreacionPaciente(paciente)
-
-        // Debug: guardar info del primer paciente para ver estructura
-        if (Object.keys(debugPacientes).length < 2) {
-          debugPacientes[cita.id_paciente] = {
-            campos_fecha: Object.keys(paciente).filter(k =>
-              k.includes('fecha') || k.includes('date') || k.includes('creat') || k.includes('ingres')
-            ),
-            fecha_detectada: fechaCreacion,
-            todos_los_campos: Object.keys(paciente),
-          }
-        }
-
-        if (fechaCreacion) {
-          campoFechaDetectado = fechaCreacion
-          citasConPaciente.push({ ...cita, paciente_creado_hoy: fechaCreacion === fecha })
-        } else {
-          // No se encontró campo de fecha, incluir por las dudas
-          citasConPaciente.push({ ...cita, paciente_creado_hoy: true })
-        }
-      } else {
-        // No se pudo consultar paciente, incluir por las dudas
-        citasConPaciente.push({ ...cita, paciente_creado_hoy: true })
-      }
+      debugPacientes[cita.id_paciente] = fechaAlta || 'sin_fecha'
+      citasConFecha.push({ ...cita, fecha_afiliacion: fechaAlta })
 
       // Rate limiting entre consultas
       await new Promise(r => setTimeout(r, 200))
     }
 
-    // Si pudimos detectar fechas, filtrar solo los creados hoy
-    const hayFechas = citasConPaciente.some(c => campoFechaDetectado !== '')
-    let citasNuevas: DentalinkCitaFull[]
-
-    if (hayFechas) {
-      citasNuevas = citasConPaciente.filter(c => c.paciente_creado_hoy)
-      metodo = 'primera_vez+fecha_paciente'
-    } else {
-      citasNuevas = citasPrimeraVez
-      metodo = 'primera_vez_only'
-    }
+    // 4. Filtrar: solo pacientes afiliados/dados de alta en la fecha seleccionada
+    const citasNuevas = citasConFecha.filter(c => c.fecha_afiliacion === fecha)
+    const metodo = 'primera_vez+fecha_afiliacion'
 
     const agendados = citasNuevas.map(c => ({
       id: c.id,
