@@ -88,6 +88,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: profileError.message }, { status: 500 })
   }
 
+  // Si es Rol A, crear employee en tabla employees (para módulo Horas)
+  if (rol === 'rolA') {
+    await supabaseAdmin.from('employees').insert({
+      name: nombre,
+      active: true,
+      gestion_user_id: authData.user.id,
+    })
+  }
+
   return NextResponse.json({ user: { id: authData.user.id, email, nombre, rol, sede_id } })
 }
 
@@ -160,6 +169,19 @@ export async function DELETE(request: Request) {
 
   // Eliminar registros relacionados primero (FK constraints)
   await supabaseAdmin.from('tarea_completadas').delete().eq('user_id', id)
+
+  // Eliminar employee y hour_entries si existe (módulo Horas)
+  const { data: empData } = await supabaseAdmin
+    .from('employees')
+    .select('id')
+    .eq('gestion_user_id', id)
+    .single()
+
+  if (empData) {
+    await supabaseAdmin.from('hour_entries').delete().eq('employee_id', empData.id)
+    await supabaseAdmin.from('payment_records').delete().eq('employee_id', empData.id)
+    await supabaseAdmin.from('employees').delete().eq('id', empData.id)
+  }
 
   // Eliminar perfil
   const { error: profileError } = await supabaseAdmin

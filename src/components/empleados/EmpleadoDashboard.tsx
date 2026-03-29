@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { createHorasClient } from '@/lib/supabase/horas-client'
 import { useAuth } from '@/components/AuthProvider'
 import {
   CheckCircle2,
@@ -49,7 +48,6 @@ function isDoubleDay(date: Date): boolean {
 export default function EmpleadoDashboard() {
   const { user } = useAuth()
   const supabase = createClient()
-  const horasSupabase = createHorasClient()
 
   // Tareas state
   const [totalTareas, setTotalTareas] = useState(0)
@@ -106,7 +104,7 @@ export default function EmpleadoDashboard() {
 
       // --- HORAS ---
       // Get employee mapping
-      const { data: empData } = await horasSupabase
+      const { data: empData } = await supabase
         .from('employees')
         .select('id, name, gestion_user_id')
         .eq('gestion_user_id', user.id)
@@ -116,7 +114,7 @@ export default function EmpleadoDashboard() {
         const emp = empData as unknown as HorasEmployee
 
         // Get config
-        const { data: cfgData } = await horasSupabase.from('config').select('key, value')
+        const { data: cfgData } = await supabase.from('config').select('key, value')
         const cfg: Record<string, string> = {}
         if (cfgData) {
           (cfgData as unknown as { key: string; value: string }[]).forEach(d => { cfg[d.key] = d.value })
@@ -131,7 +129,7 @@ export default function EmpleadoDashboard() {
         const startDate = `${now.getFullYear()}-${String(dbMonth).padStart(2, '0')}-01`
         const endDate = `${now.getFullYear()}-${String(dbMonth).padStart(2, '0')}-31`
 
-        const { data: horasData } = await horasSupabase
+        const { data: horasData } = await supabase
           .from('hour_entries')
           .select('employee_id, date, hours')
           .eq('employee_id', emp.id)
@@ -160,7 +158,7 @@ export default function EmpleadoDashboard() {
         const prevStart = `${prevYear}-${String(prevMonth).padStart(2, '0')}-01`
         const prevEnd = `${prevYear}-${String(prevMonth).padStart(2, '0')}-31`
 
-        const { data: prevData } = await horasSupabase
+        const { data: prevData } = await supabase
           .from('hour_entries')
           .select('hours')
           .eq('employee_id', emp.id)

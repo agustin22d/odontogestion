@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { createHorasClient } from '@/lib/supabase/horas-client'
+import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/components/AuthProvider'
 import {
   ChevronLeft,
@@ -96,7 +96,7 @@ type AdminView = 'resumen' | 'calendario'
 
 export default function HorasTab({ isAdmin }: { isAdmin: boolean }) {
   const { user } = useAuth()
-  const supabase = createHorasClient()
+  const supabase = createClient()
   const [employees, setEmployees] = useState<HorasEmployee[]>([])
   const [entries, setEntries] = useState<HourEntry[]>([])
   const [config, setConfig] = useState<HorasConfig>({ hourly_rate: 8000, sunday_multiplier: 2 })
@@ -758,7 +758,7 @@ export function AdminConfig({
   employees: HorasEmployee[]
   fetchEmployees: () => Promise<void>
 }) {
-  const supabase = createHorasClient()
+  const supabase = createClient()
   const [rate, setRate] = useState(String(config.hourly_rate))
   const [mult, setMult] = useState(String(config.sunday_multiplier))
   const [newName, setNewName] = useState('')

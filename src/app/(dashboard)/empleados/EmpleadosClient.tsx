@@ -13,7 +13,7 @@ import {
 import TareasTab from '@/components/empleados/TareasTab'
 import HorasTab, { AdminConfig } from '@/components/empleados/HorasTab'
 import EmpleadoDashboard from '@/components/empleados/EmpleadoDashboard'
-import { createHorasClient } from '@/lib/supabase/horas-client'
+import { createClient } from '@/lib/supabase/client'
 
 type AdminTabId = 'tareas' | 'turnos-agendados' | 'horas' | 'config'
 type EmployeeTabId = 'dashboard' | 'turnos' | 'tareas' | 'horas'
@@ -107,7 +107,7 @@ function TurnosAgendadosTab() {
 }
 
 function ConfigTab() {
-  const supabase = createHorasClient()
+  const supabase = createClient()
   const [config, setConfig] = useState({ hourly_rate: 8000, sunday_multiplier: 2 })
   const [employees, setEmployees] = useState<{ id: string; name: string; active: boolean; gestion_user_id: string | null }[]>([])
 
