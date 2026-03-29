@@ -109,10 +109,12 @@ export default function StockModule() {
     setShowModal(true)
   }
 
+  const isAdmin = user?.rol === 'admin'
+  const canManage = isAdmin || user?.rol === 'rolC' // admin y rolC pueden hacer todo
   const tabs: { id: ViewTab; label: string }[] = [
     { id: 'resumen', label: 'Stock Actual' },
     { id: 'movimientos', label: 'Movimientos' },
-    { id: 'productos', label: 'Productos' },
+    ...(canManage ? [{ id: 'productos' as ViewTab, label: 'Productos' }] : []),
   ]
 
   if (loading) {
@@ -127,12 +129,14 @@ export default function StockModule() {
     <div>
       {/* Action buttons */}
       <div className="flex flex-wrap items-center gap-2 mb-6">
-        <button
-          onClick={() => openModal('entrada')}
-          className="flex items-center gap-2 px-4 py-2 bg-green-primary text-white rounded-lg text-sm font-medium hover:bg-green-dark transition-colors"
-        >
-          <Plus size={16} /> Entrada
-        </button>
+        {canManage && (
+          <button
+            onClick={() => openModal('entrada')}
+            className="flex items-center gap-2 px-4 py-2 bg-green-primary text-white rounded-lg text-sm font-medium hover:bg-green-dark transition-colors"
+          >
+            <Plus size={16} /> Entrada
+          </button>
+        )}
         <button
           onClick={() => openModal('salida')}
           className="flex items-center gap-2 px-4 py-2 bg-red text-white rounded-lg text-sm font-medium hover:opacity-90 transition-colors"
@@ -181,7 +185,7 @@ export default function StockModule() {
           setProductoFilter={setProductoFilter}
         />
       )}
-      {activeTab === 'productos' && (
+      {activeTab === 'productos' && canManage && (
         <ProductosView
           productos={todosProductos}
           onRefresh={fetchData}
