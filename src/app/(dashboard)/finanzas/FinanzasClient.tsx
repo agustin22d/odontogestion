@@ -555,13 +555,6 @@ function CobranzasTab() {
     <div>
       {/* Actions */}
       <div className="flex items-center gap-2 mb-4">
-        {user?.rol === 'admin' && (
-          <SyncButton
-            label="Sync Pagos"
-            endpoints={[{ url: '/api/sync-pagos', body: { dias: 7 } }]}
-            onDone={() => fetchCobranzas()}
-          />
-        )}
         <button
           onClick={() => setShowForm(!showForm)}
           className="inline-flex items-center gap-2 px-4 py-2 bg-gold hover:bg-gold-dark text-white text-sm font-medium rounded-lg transition-colors"
@@ -794,21 +787,26 @@ function CobranzasTab() {
 
         <span className="text-sm text-text-secondary capitalize">{formatFecha(fecha)}</span>
 
-        {user?.rol === 'admin' && (
-          <div className="flex items-center gap-2 sm:ml-auto">
-            <Filter size={14} className="text-text-muted" />
-            <select
-              value={sedeFilter}
-              onChange={(e) => setSedeFilter(e.target.value)}
-              className="text-sm border border-border rounded-lg px-3 py-1.5 bg-surface text-text-primary focus:outline-none focus:border-green-primary"
-            >
-              <option value="todas">Todas las sedes</option>
-              {sedes.map(s => (
-                <option key={s.id} value={s.id}>{s.nombre}</option>
-              ))}
-            </select>
-          </div>
-        )}
+        <div className="flex items-center gap-2 sm:ml-auto">
+          <Filter size={14} className="text-text-muted" />
+          <select
+            value={sedeFilter}
+            onChange={(e) => setSedeFilter(e.target.value)}
+            className="text-sm border border-border rounded-lg px-3 py-1.5 bg-surface text-text-primary focus:outline-none focus:border-green-primary"
+          >
+            <option value="todas">Todas las sedes</option>
+            {sedes.map(s => (
+              <option key={s.id} value={s.id}>{s.nombre}</option>
+            ))}
+          </select>
+          {user?.rol === 'admin' && (
+            <SyncButton
+              label="Sync Pagos"
+              endpoints={[{ url: '/api/sync-pagos', body: { dias: 7 } }]}
+              onDone={() => fetchCobranzas()}
+            />
+          )}
+        </div>
       </div>
 
       {/* Stats */}

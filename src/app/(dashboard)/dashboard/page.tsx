@@ -241,14 +241,6 @@ function AdminDashboard() {
           <p className="text-sm text-text-secondary capitalize">{formatFechaHoy()}</p>
         </div>
         <div className="flex items-center gap-3">
-          <SyncButton
-            label="Sync todo"
-            endpoints={[
-              { url: '/api/sync-dentalink', body: { dias: 7 } },
-              { url: '/api/sync-pagos', body: { dias: 7 } },
-            ]}
-            onDone={() => fetchDashboardData()}
-          />
           <Filter size={14} className="text-text-muted" />
           <select
             value={sedeFilter}
@@ -260,6 +252,14 @@ function AdminDashboard() {
               <option key={s.id} value={s.id}>{s.nombre}</option>
             ))}
           </select>
+          <SyncButton
+            label="Sync todo"
+            endpoints={[
+              { url: '/api/sync-dentalink', body: { dias: 7 } },
+              { url: '/api/sync-pagos', body: { dias: 7 } },
+            ]}
+            onDone={() => fetchDashboardData()}
+          />
         </div>
       </div>
 
