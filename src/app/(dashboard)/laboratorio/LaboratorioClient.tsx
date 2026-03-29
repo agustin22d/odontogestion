@@ -18,6 +18,7 @@ import {
   Clock,
   History,
   MapPin,
+  Search,
 } from 'lucide-react'
 import type { EstadoLaboratorio, LaboratorioCaso, LaboratorioHistorial, Sede } from '@/types/database'
 
@@ -50,6 +51,7 @@ export default function LaboratorioClient() {
   const [loading, setLoading] = useState(true)
   const [filtroEstado, setFiltroEstado] = useState<EstadoLaboratorio | 'todos'>('todos')
   const [filtroSede, setFiltroSede] = useState('todas')
+  const [busqueda, setBusqueda] = useState('')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [historialCaso, setHistorialCaso] = useState<LaboratorioCaso | null>(null)
   const [historial, setHistorial] = useState<LaboratorioHistorial[]>([])
@@ -233,6 +235,16 @@ export default function LaboratorioClient() {
     return new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
   }
 
+  const casosFiltrados = busqueda
+    ? casos.filter(c => {
+        const q = busqueda.toLowerCase()
+        return c.paciente.toLowerCase().includes(q)
+          || (c.profesional && c.profesional.toLowerCase().includes(q))
+          || (c.tipo && c.tipo.toLowerCase().includes(q))
+          || (c.laboratorio && c.laboratorio.toLowerCase().includes(q))
+      })
+    : casos
+
   return (
     <div>
       {/* Header */}
@@ -286,7 +298,7 @@ export default function LaboratorioClient() {
         })}
       </div>
 
-      {/* Active filters info */}
+      {/* Search + active filters */}
       <div className="flex items-center gap-3 mb-4">
         {filtroEstado !== 'todos' && (
           <button
@@ -296,16 +308,25 @@ export default function LaboratorioClient() {
             <X size={12} /> Limpiar estado
           </button>
         )}
-        <span className="text-xs text-text-muted ml-auto">{casos.length} caso{casos.length !== 1 ? 's' : ''}</span>
+        <div className="relative ml-auto">
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
+          <input
+            value={busqueda}
+            onChange={e => setBusqueda(e.target.value)}
+            placeholder="Buscar paciente..."
+            className="text-sm border border-border rounded-lg pl-8 pr-3 py-1.5 bg-surface text-text-primary focus:outline-none focus:border-green-primary w-48"
+          />
+        </div>
+        <span className="text-xs text-text-muted">{casosFiltrados.length} caso{casosFiltrados.length !== 1 ? 's' : ''}</span>
       </div>
 
       {/* Table */}
       <div className="bg-surface rounded-xl border border-border overflow-hidden">
         {loading ? (
           <div className="p-8 text-center text-text-muted">Cargando casos...</div>
-        ) : casos.length === 0 ? (
+        ) : casosFiltrados.length === 0 ? (
           <div className="p-8 text-center text-text-muted">
-            {filtroEstado !== 'todos' || filtroSede !== 'todas'
+            {filtroEstado !== 'todos' || filtroSede !== 'todas' || busqueda
               ? 'No hay casos con estos filtros'
               : 'No hay casos registrados. Creá el primero.'}
           </div>
@@ -324,7 +345,7 @@ export default function LaboratorioClient() {
                 </tr>
               </thead>
               <tbody>
-                {casos.map(caso => {
+                {casosFiltrados.map(caso => {
                   const est = ESTADO_MAP[caso.estado]
                   const next = nextEstado(caso.estado)
                   const nextEst = next ? ESTADO_MAP[next] : null
