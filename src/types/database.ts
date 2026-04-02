@@ -22,6 +22,7 @@ export interface User {
   nombre: string
   rol: UserRole
   sede_id: string | null
+  must_change_password?: boolean
   created_at: string
 }
 

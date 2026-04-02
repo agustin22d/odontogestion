@@ -39,6 +39,12 @@ export function AuthProvider({ children, initialUser }: { children: React.ReactN
             .single()
           setUser(profile)
 
+          // Redirect to password change if needed
+          if (profile?.must_change_password && typeof window !== 'undefined' && !window.location.pathname.includes('cambiar-clave')) {
+            window.location.href = '/cambiar-clave'
+            return
+          }
+
           // Auto-sync Dentalink al iniciar sesión (admin only, solo en SIGNED_IN)
           if (event === 'SIGNED_IN' && profile?.rol === 'admin') {
             fetch('/api/sync-dentalink', {

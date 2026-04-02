@@ -80,6 +80,7 @@ export async function POST(request: Request) {
       nombre,
       rol,
       sede_id: sede_id || null,
+      must_change_password: true,
     })
 
   if (profileError) {
@@ -116,7 +117,7 @@ export async function PUT(request: Request) {
 
   const supabaseAdmin = getSupabaseAdmin()
 
-  // Si viene new_password, actualizar contraseña en Auth
+  // Si viene new_password, actualizar contraseña en Auth y marcar must_change_password
   if (new_password) {
     const { error: passError } = await supabaseAdmin.auth.admin.updateUserById(id, {
       password: new_password,
@@ -124,6 +125,11 @@ export async function PUT(request: Request) {
     if (passError) {
       return NextResponse.json({ error: passError.message }, { status: 400 })
     }
+    // Marcar que debe cambiar contraseña en el próximo login
+    await supabaseAdmin
+      .from('users')
+      .update({ must_change_password: true })
+      .eq('id', id)
   }
 
   // Actualizar perfil si vienen campos

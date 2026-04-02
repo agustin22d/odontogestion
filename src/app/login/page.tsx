@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -17,15 +17,32 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const email = username.includes('@') ? username : `${username.toLowerCase().trim()}@badentalstudio.com`
+
+    const { error: authError } = await supabase.auth.signInWithPassword({
       email,
       password,
     })
 
-    if (error) {
-      setError('Email o contraseña incorrectos')
+    if (authError) {
+      setError('Usuario o contraseña incorrectos')
       setLoading(false)
       return
+    }
+
+    // Check if must change password
+    const { data: { user: authUser } } = await supabase.auth.getUser()
+    if (authUser) {
+      const { data: profile } = await supabase
+        .from('users')
+        .select('must_change_password')
+        .eq('id', authUser.id)
+        .single()
+      if (profile?.must_change_password) {
+        router.push('/cambiar-clave')
+        router.refresh()
+        return
+      }
     }
 
     router.push('/dashboard')
@@ -55,16 +72,18 @@ export default function LoginPage() {
         <form onSubmit={handleLogin} className="bg-surface rounded-xl border border-border p-6 shadow-sm">
           <div className="space-y-4">
             <div>
-              <label htmlFor="email" className="block text-xs font-medium tracking-wide uppercase text-text-secondary mb-1.5">
-                Email
+              <label htmlFor="username" className="block text-xs font-medium tracking-wide uppercase text-text-secondary mb-1.5">
+                Usuario
               </label>
               <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="tu@email.com"
+                id="username"
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="tu usuario"
                 required
+                autoCapitalize="none"
+                autoCorrect="off"
                 className="w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-surface text-text-primary placeholder:text-text-muted focus:outline-none focus:border-green-primary focus:ring-2 focus:ring-green-primary/10 transition-colors"
               />
             </div>

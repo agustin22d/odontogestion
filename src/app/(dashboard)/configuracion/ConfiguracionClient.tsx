@@ -86,11 +86,12 @@ export default function ConfiguracionClient() {
     setTimeout(() => setFeedback(null), 4000)
   }
 
-  const handleCreateUser = async (formData: { email: string; password: string; nombre: string; rol: UserRole; sede_id: string }) => {
+  const handleCreateUser = async (formData: { username: string; password: string; nombre: string; rol: UserRole; sede_id: string }) => {
+    const email = `${formData.username.toLowerCase().trim()}@badentalstudio.com`
     const res = await fetch('/api/admin/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(formData),
+      body: JSON.stringify({ ...formData, email }),
     })
     const data = await res.json()
     if (!res.ok) {
@@ -186,7 +187,7 @@ export default function ConfiguracionClient() {
               <thead>
                 <tr className="border-b border-border bg-beige/50">
                   <th className="text-left px-4 py-3 font-medium text-text-secondary">Nombre</th>
-                  <th className="text-left px-4 py-3 font-medium text-text-secondary">Email</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-secondary">Usuario</th>
                   <th className="text-left px-4 py-3 font-medium text-text-secondary">Rol</th>
                   <th className="text-left px-4 py-3 font-medium text-text-secondary">Sede</th>
                   <th className="text-right px-4 py-3 font-medium text-text-secondary">Acciones</th>
@@ -196,7 +197,7 @@ export default function ConfiguracionClient() {
                 {users.map(u => (
                   <tr key={u.id} className="border-b border-border last:border-0 hover:bg-beige/30 transition-colors">
                     <td className="px-4 py-3 font-medium text-text-primary">{u.nombre}</td>
-                    <td className="px-4 py-3 text-text-secondary">{u.email}</td>
+                    <td className="px-4 py-3 text-text-secondary font-mono text-xs">{u.email.replace('@badentalstudio.com', '')}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${ROLE_COLORS[u.rol]}`}>
                         <Shield size={12} />
@@ -310,9 +311,9 @@ export default function ConfiguracionClient() {
 function CreateUserModal({ sedes, onClose, onCreate }: {
   sedes: Sede[]
   onClose: () => void
-  onCreate: (data: { email: string; password: string; nombre: string; rol: UserRole; sede_id: string }) => Promise<boolean>
+  onCreate: (data: { username: string; password: string; nombre: string; rol: UserRole; sede_id: string }) => Promise<boolean>
 }) {
-  const [form, setForm] = useState({ email: '', password: '', nombre: '', rol: 'rolC' as UserRole, sede_id: '' })
+  const [form, setForm] = useState({ username: '', password: 'BadentalStudio', nombre: '', rol: 'rolC' as UserRole, sede_id: '' })
   const [showPass, setShowPass] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -345,15 +346,18 @@ function CreateUserModal({ sedes, onClose, onCreate }: {
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-text-secondary mb-1">Email</label>
+          <label className="block text-sm font-medium text-text-secondary mb-1">Usuario</label>
           <input
-            type="email"
+            type="text"
             required
-            value={form.email}
-            onChange={e => setForm({ ...form, email: e.target.value })}
-            className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-white focus:ring-2 focus:ring-green-primary/20 focus:border-green-primary outline-none"
-            placeholder="usuario@ejemplo.com"
+            value={form.username}
+            onChange={e => setForm({ ...form, username: e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, '') })}
+            className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-white focus:ring-2 focus:ring-green-primary/20 focus:border-green-primary outline-none font-mono"
+            placeholder="ej: lreartes"
+            autoCapitalize="none"
+            autoCorrect="off"
           />
+          <p className="text-xs text-text-muted mt-1">Sin espacios ni caracteres especiales</p>
         </div>
         <div>
           <label className="block text-sm font-medium text-text-secondary mb-1">Contraseña</label>
