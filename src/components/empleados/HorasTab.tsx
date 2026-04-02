@@ -268,18 +268,17 @@ export default function HorasTab({ isAdmin }: { isAdmin: boolean }) {
     try {
       const { year, month } = currentMonth
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (supabase.from('weekly_approvals') as any)
+      const { error } = await (supabase.from('weekly_approvals') as any)
         .upsert(
           {
             year,
             month: month + 1,
             week_number: weekNumber,
             approved: approve,
-            approved_at: approve ? new Date().toISOString() : null,
-            approved_by: approve ? 'admin' : null,
           },
           { onConflict: 'year,month,week_number' }
         )
+      if (error) console.error('Error toggling approval:', error)
       fetchApprovals()
     } catch (err) {
       console.error('Error toggling approval:', err)
@@ -291,23 +290,22 @@ export default function HorasTab({ isAdmin }: { isAdmin: boolean }) {
       const { year, month } = currentMonth
       if (markPaid) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (supabase.from('payment_records') as any)
+        const { error } = await (supabase.from('payment_records') as any)
           .insert({
             employee_id: employeeId,
             year,
             month: month + 1,
-            total_hours: 0,
             total_amount: amount,
-            paid_at: new Date().toISOString(),
-            paid_by: 'admin',
           })
+        if (error) console.error('Error inserting payment:', error)
       } else {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (supabase.from('payment_records') as any)
+        const { error } = await (supabase.from('payment_records') as any)
           .delete()
           .eq('employee_id', employeeId)
           .eq('year', year)
           .eq('month', month + 1)
+        if (error) console.error('Error deleting payment:', error)
       }
       fetchPayments()
     } catch (err) {
