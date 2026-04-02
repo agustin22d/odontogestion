@@ -31,7 +31,7 @@ const adminNavItems: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard size={20} />, roles: ['admin'] },
   { label: 'Turnos', href: '/turnos', icon: <CalendarDays size={20} />, roles: ['admin'] },
   { label: 'Finanzas', href: '/finanzas', icon: <Wallet size={20} />, roles: ['admin'] },
-  { label: 'Stock', href: '/stock', icon: <Package size={20} />, roles: ['admin', 'rolC'] },
+  { label: 'Stock', href: '/stock', icon: <Package size={20} />, roles: ['admin'] },
   { label: 'Laboratorio', href: '/laboratorio', icon: <FlaskConical size={20} />, roles: ['admin'] },
   { label: 'Empleados', href: '/empleados', icon: <Users size={20} />, roles: ['admin'] },
   { label: 'Configuración', href: '/configuracion', icon: <Settings size={20} />, roles: ['admin'] },
@@ -39,7 +39,7 @@ const adminNavItems: NavItem[] = [
 
 const employeeNavItems: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard size={20} />, roles: ['rolA', 'rolB', 'rolC'] },
-  { label: 'Turnos', href: '/turnos', icon: <CalendarDays size={20} />, roles: ['rolA', 'rolB', 'rolC'] },
+  { label: 'Turnos', href: '/turnos', icon: <CalendarDays size={20} />, roles: ['rolA'] },
   { label: 'Stock', href: '/stock', icon: <Package size={20} />, roles: ['rolB'] },
   { label: 'Laboratorio', href: '/laboratorio', icon: <FlaskConical size={20} />, roles: ['rolB', 'rolC'] },
   { label: 'Tareas', href: '/tareas', icon: <CheckSquare size={20} />, roles: ['rolA', 'rolB', 'rolC'] },
