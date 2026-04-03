@@ -126,8 +126,9 @@ export default function EmpleadoDashboard() {
         // Current month entries
         const now = new Date()
         const dbMonth = now.getMonth() + 1
+        const lastDay = new Date(now.getFullYear(), dbMonth, 0).getDate()
         const startDate = `${now.getFullYear()}-${String(dbMonth).padStart(2, '0')}-01`
-        const endDate = `${now.getFullYear()}-${String(dbMonth).padStart(2, '0')}-31`
+        const endDate = `${now.getFullYear()}-${String(dbMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
 
         const { data: horasData } = await supabase
           .from('hour_entries')
@@ -155,8 +156,9 @@ export default function EmpleadoDashboard() {
         // Previous month for comparison
         const prevMonth = now.getMonth() === 0 ? 12 : now.getMonth()
         const prevYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()
+        const prevLastDay = new Date(prevYear, prevMonth, 0).getDate()
         const prevStart = `${prevYear}-${String(prevMonth).padStart(2, '0')}-01`
-        const prevEnd = `${prevYear}-${String(prevMonth).padStart(2, '0')}-31`
+        const prevEnd = `${prevYear}-${String(prevMonth).padStart(2, '0')}-${String(prevLastDay).padStart(2, '0')}`
 
         const { data: prevData } = await supabase
           .from('hour_entries')
