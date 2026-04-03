@@ -24,18 +24,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'La contraseña debe tener al menos 6 caracteres' }, { status: 400 })
   }
 
-  const supabaseAdmin = getSupabaseAdmin()
-
-  // Update password in Auth
-  const { error: passError } = await supabaseAdmin.auth.admin.updateUserById(authUser.id, {
-    password,
-  })
+  // Update password using user's own session (preserves session/cookies)
+  const { error: passError } = await supabase.auth.updateUser({ password })
 
   if (passError) {
     return NextResponse.json({ error: passError.message }, { status: 500 })
   }
 
   // Mark must_change_password = false using service role (bypasses RLS)
+  const supabaseAdmin = getSupabaseAdmin()
   const { error: updateError } = await supabaseAdmin
     .from('users')
     .update({ must_change_password: false, current_password: null })
