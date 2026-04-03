@@ -31,19 +31,26 @@ export async function updateSession(request: NextRequest) {
     data: { session },
   } = await supabase.auth.getSession()
 
-  // If no session and not on login or API route, redirect to login
-  if (
-    !session &&
-    !request.nextUrl.pathname.startsWith('/login') &&
-    !request.nextUrl.pathname.startsWith('/api/')
-  ) {
+  const pathname = request.nextUrl.pathname
+  const isPublicRoute = pathname.startsWith('/login') || pathname.startsWith('/api/') || pathname.startsWith('/cambiar-clave')
+
+  // If no session and not on public route, redirect to login
+  if (!session && !isPublicRoute) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
   }
 
   // If session exists and user is on login page, redirect to dashboard
-  if (session && request.nextUrl.pathname.startsWith('/login')) {
+  // But first verify the session is not expired to prevent redirect loops
+  if (session && pathname.startsWith('/login')) {
+    const expiresAt = session.expires_at
+    const now = Math.floor(Date.now() / 1000)
+    if (expiresAt && expiresAt < now) {
+      // Session expired — clear it and stay on login
+      await supabase.auth.signOut()
+      return supabaseResponse
+    }
     const url = request.nextUrl.clone()
     url.pathname = '/dashboard'
     return NextResponse.redirect(url)

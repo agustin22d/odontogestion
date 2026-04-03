@@ -81,6 +81,7 @@ export async function POST(request: Request) {
       rol,
       sede_id: sede_id || null,
       must_change_password: true,
+      current_password: password,
     })
 
   if (profileError) {
@@ -125,10 +126,10 @@ export async function PUT(request: Request) {
     if (passError) {
       return NextResponse.json({ error: passError.message }, { status: 400 })
     }
-    // Marcar que debe cambiar contraseña en el próximo login
+    // Marcar que debe cambiar contraseña en el próximo login y guardar clave temporal
     await supabaseAdmin
       .from('users')
-      .update({ must_change_password: true })
+      .update({ must_change_password: true, current_password: new_password })
       .eq('id', id)
   }
 

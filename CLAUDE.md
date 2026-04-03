@@ -12,8 +12,7 @@ Dashboard de gestion para 6 clinicas dentales en Buenos Aires. Permite administr
 - **Node.js:** Usar Node 20 siempre: `export PATH="/opt/homebrew/opt/node@20/bin:$PATH"`
 
 ## Supabase
-- **Gestion:** proyecto `ljqnjxbrqbfbqvhufmly` (cobranzas, turnos, gastos, stock, deudas, sedes, users)
-- **Horas:** proyecto `gjkyfzkpzyktchmhysrb` (horas, tarea_plantillas, tarea_completadas)
+- **Proyecto unico:** `ljqnjxbrqbfbqvhufmly` (todo: cobranzas, turnos, gastos, stock, deudas, sedes, users, employees, hour_entries, config, weekly_approvals, payment_records)
 - **Patron critico:** Supabase client devuelve `{ data, error }` — NO lanza excepciones. Siempre chequear `error` explicitamente, nunca usar try/catch para errores de Supabase.
 - **Singleton:** No incluir `supabase` en deps de useCallback/useEffect
 - **Casts:** Usar `as unknown as Type` para clientes sin tipos generados
@@ -80,11 +79,8 @@ personal, laboratorio, sueldos, publicidad, limpieza, implantes, insumos, alquil
 - `src/components/Sidebar.tsx` — sidebar con hamburguesa mobile
 - `src/types/database.ts` — todos los tipos/interfaces
 
-## Tablas Supabase (gestion)
-sedes, users, cobranzas, deudas, turnos, gastos, stock_productos, stock_movimientos
-
-## Tablas Supabase (horas)
-horas, tarea_plantillas, tarea_completadas, users (duplicado)
+## Tablas Supabase
+sedes, users, cobranzas, deudas, turnos, gastos, stock_productos, stock_movimientos, employees, hour_entries, config, weekly_approvals, payment_records, tareas, tarea_plantillas, tarea_completadas, empleados_config
 
 ## Pendientes / TODO
 - [ ] **Redirect loop en produccion** — al entrar a badentalstudio.online hay redirect loop. Puede ser cookies, deploy, o middleware deprecated de Next.js 16. Probar borrar cookies primero.

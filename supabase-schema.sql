@@ -94,17 +94,51 @@ CREATE TABLE tareas (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 8. HORAS
-CREATE TABLE horas (
+-- 8. EMPLOYEES (módulo horas)
+CREATE TABLE employees (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id UUID NOT NULL REFERENCES users(id),
-  fecha DATE NOT NULL,
-  horas DECIMAL(4,2) NOT NULL CHECK (horas > 0 AND horas <= 24),
-  es_domingo BOOLEAN DEFAULT false,
-  es_feriado BOOLEAN DEFAULT false,
-  estado estado_hora DEFAULT 'pendiente',
+  name TEXT NOT NULL,
+  active BOOLEAN DEFAULT true,
+  gestion_user_id UUID REFERENCES users(id),
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 9. HOUR_ENTRIES (módulo horas)
+CREATE TABLE hour_entries (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+  date DATE NOT NULL,
+  hours DECIMAL(4,2) NOT NULL CHECK (hours > 0 AND hours <= 24),
+  updated_at TIMESTAMPTZ DEFAULT now(),
   created_at TIMESTAMPTZ DEFAULT now(),
-  UNIQUE(user_id, fecha)
+  UNIQUE(employee_id, date)
+);
+
+-- 10. CONFIG (módulo horas)
+CREATE TABLE config (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 11. WEEKLY_APPROVALS (módulo horas)
+CREATE TABLE weekly_approvals (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  year INTEGER NOT NULL,
+  month INTEGER NOT NULL,
+  week_number INTEGER NOT NULL,
+  approved BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 12. PAYMENT_RECORDS (módulo horas)
+CREATE TABLE payment_records (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+  year INTEGER NOT NULL,
+  month INTEGER NOT NULL,
+  total_amount DECIMAL(12,2) NOT NULL,
+  paid_at TIMESTAMPTZ DEFAULT now()
 );
 
 -- 9. GASTOS
@@ -167,7 +201,11 @@ ALTER TABLE cobranzas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE deudas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE turnos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tareas ENABLE ROW LEVEL SECURITY;
-ALTER TABLE horas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
+ALTER TABLE hour_entries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE config ENABLE ROW LEVEL SECURITY;
+ALTER TABLE weekly_approvals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE payment_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE gastos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE empleados_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE productos_stock ENABLE ROW LEVEL SECURITY;
@@ -237,11 +275,38 @@ CREATE POLICY "Tareas: ver propias" ON tareas FOR SELECT USING (asignado_a = aut
 CREATE POLICY "Tareas: admin gestiona" ON tareas FOR ALL USING (get_user_role() = 'admin');
 CREATE POLICY "Tareas: completar propias" ON tareas FOR UPDATE USING (asignado_a = auth.uid());
 
--- HORAS: admin ve todo, cada uno ve las suyas
-CREATE POLICY "Horas: admin ve todo" ON horas FOR SELECT USING (get_user_role() = 'admin');
-CREATE POLICY "Horas: ver propias" ON horas FOR SELECT USING (user_id = auth.uid());
-CREATE POLICY "Horas: insertar propias" ON horas FOR INSERT WITH CHECK (user_id = auth.uid());
-CREATE POLICY "Horas: admin gestiona" ON horas FOR ALL USING (get_user_role() = 'admin');
+-- EMPLOYEES: admin gestiona, autenticados leen activos
+CREATE POLICY "employees_admin_all" ON employees FOR ALL USING (get_user_role() = 'admin');
+CREATE POLICY "employees_select_active" ON employees FOR SELECT USING (active = true);
+
+-- HOUR_ENTRIES: admin gestiona todo, rolA CRUD propias
+CREATE POLICY "hour_entries_admin_all" ON hour_entries FOR ALL USING (get_user_role() = 'admin');
+CREATE POLICY "hour_entries_select_own" ON hour_entries FOR SELECT USING (
+  EXISTS (SELECT 1 FROM employees WHERE employees.id = hour_entries.employee_id AND employees.gestion_user_id = auth.uid())
+);
+CREATE POLICY "hour_entries_insert_own" ON hour_entries FOR INSERT WITH CHECK (
+  EXISTS (SELECT 1 FROM employees WHERE employees.id = hour_entries.employee_id AND employees.gestion_user_id = auth.uid())
+);
+CREATE POLICY "hour_entries_update_own" ON hour_entries FOR UPDATE USING (
+  EXISTS (SELECT 1 FROM employees WHERE employees.id = hour_entries.employee_id AND employees.gestion_user_id = auth.uid())
+);
+CREATE POLICY "hour_entries_delete_own" ON hour_entries FOR DELETE USING (
+  EXISTS (SELECT 1 FROM employees WHERE employees.id = hour_entries.employee_id AND employees.gestion_user_id = auth.uid())
+);
+
+-- CONFIG: todos leen, admin escribe
+CREATE POLICY "config_select_all" ON config FOR SELECT USING (true);
+CREATE POLICY "config_admin_write" ON config FOR ALL USING (get_user_role() = 'admin');
+
+-- WEEKLY_APPROVALS: todos leen, admin escribe
+CREATE POLICY "weekly_approvals_select_all" ON weekly_approvals FOR SELECT USING (true);
+CREATE POLICY "weekly_approvals_admin_write" ON weekly_approvals FOR ALL USING (get_user_role() = 'admin');
+
+-- PAYMENT_RECORDS: admin gestiona, rolA ve propios
+CREATE POLICY "payment_records_admin_all" ON payment_records FOR ALL USING (get_user_role() = 'admin');
+CREATE POLICY "payment_records_select_own" ON payment_records FOR SELECT USING (
+  EXISTS (SELECT 1 FROM employees WHERE employees.id = payment_records.employee_id AND employees.gestion_user_id = auth.uid())
+);
 
 -- GASTOS: solo admin
 CREATE POLICY "Gastos: solo admin" ON gastos FOR ALL USING (get_user_role() = 'admin');
@@ -280,7 +345,8 @@ CREATE INDEX idx_turnos_sede_fecha ON turnos(sede_id, fecha);
 CREATE INDEX idx_turnos_fecha ON turnos(fecha);
 CREATE INDEX idx_tareas_asignado ON tareas(asignado_a, fecha);
 CREATE INDEX idx_tareas_fecha ON tareas(fecha);
-CREATE INDEX idx_horas_user ON horas(user_id, fecha);
+CREATE INDEX idx_hour_entries_employee ON hour_entries(employee_id, date);
+CREATE INDEX idx_employees_gestion_user ON employees(gestion_user_id);
 CREATE INDEX idx_gastos_sede_fecha ON gastos(sede_id, fecha);
 CREATE INDEX idx_gastos_fecha ON gastos(fecha);
 CREATE INDEX idx_stock_sede ON productos_stock(sede_id);

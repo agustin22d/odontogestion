@@ -1,7 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Eye, EyeOff } from 'lucide-react'
 
@@ -12,7 +11,6 @@ export default function CambiarClavePage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const router = useRouter()
-  const supabase = useMemo(() => createClient(), [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -29,28 +27,27 @@ export default function CambiarClavePage() {
 
     setLoading(true)
 
-    // Update password in Supabase Auth
-    const { error: updateError } = await supabase.auth.updateUser({
-      password,
-    })
+    try {
+      const res = await fetch('/api/cambiar-clave', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      })
 
-    if (updateError) {
-      setError('Error al cambiar la contraseña: ' + updateError.message)
+      const data = await res.json()
+
+      if (!res.ok) {
+        setError(data.error || 'Error al cambiar la contraseña')
+        setLoading(false)
+        return
+      }
+
+      router.push('/dashboard')
+      router.refresh()
+    } catch {
+      setError('Error de conexión')
       setLoading(false)
-      return
     }
-
-    // Mark must_change_password = false
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-    if (authUser) {
-      await supabase
-        .from('users')
-        .update({ must_change_password: false })
-        .eq('id', authUser.id)
-    }
-
-    router.push('/dashboard')
-    router.refresh()
   }
 
   return (

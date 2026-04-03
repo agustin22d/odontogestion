@@ -28,6 +28,8 @@ interface UserWithSede {
   sede_id: string | null
   created_at: string
   sede: { nombre: string } | null
+  must_change_password?: boolean
+  current_password?: string | null
 }
 
 const ROLE_LABELS: Record<UserRole, string> = {
@@ -188,6 +190,7 @@ export default function ConfiguracionClient() {
                 <tr className="border-b border-border bg-beige/50">
                   <th className="text-left px-4 py-3 font-medium text-text-secondary">Nombre</th>
                   <th className="text-left px-4 py-3 font-medium text-text-secondary">Usuario</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-secondary">Clave</th>
                   <th className="text-left px-4 py-3 font-medium text-text-secondary">Rol</th>
                   <th className="text-left px-4 py-3 font-medium text-text-secondary">Sede</th>
                   <th className="text-right px-4 py-3 font-medium text-text-secondary">Acciones</th>
@@ -198,6 +201,13 @@ export default function ConfiguracionClient() {
                   <tr key={u.id} className="border-b border-border last:border-0 hover:bg-beige/30 transition-colors">
                     <td className="px-4 py-3 font-medium text-text-primary">{u.nombre}</td>
                     <td className="px-4 py-3 text-text-secondary font-mono text-xs">{u.email.replace('@badentalstudio.com', '')}</td>
+                    <td className="px-4 py-3">
+                      {u.current_password ? (
+                        <PasswordCell password={u.current_password} pendingChange={u.must_change_password} />
+                      ) : (
+                        <span className="text-xs text-text-muted italic">Personalizada</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${ROLE_COLORS[u.rol]}`}>
                         <Shield size={12} />
@@ -720,6 +730,30 @@ function HorasConfigSection() {
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+function PasswordCell({ password, pendingChange }: { password: string; pendingChange?: boolean }) {
+  const [visible, setVisible] = useState(false)
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="font-mono text-xs text-text-secondary min-w-[80px]">
+        {visible ? password : '••••••••'}
+      </span>
+      <button
+        onClick={() => setVisible(!visible)}
+        className="p-0.5 text-text-muted hover:text-text-primary transition-colors"
+        title={visible ? 'Ocultar' : 'Mostrar'}
+      >
+        {visible ? <EyeOff size={13} /> : <Eye size={13} />}
+      </button>
+      {pendingChange && (
+        <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full font-medium">
+          Pendiente
+        </span>
+      )}
     </div>
   )
 }

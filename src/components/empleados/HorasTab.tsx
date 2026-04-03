@@ -115,7 +115,8 @@ export default function HorasTab({ isAdmin }: { isAdmin: boolean }) {
 
   const fetchConfig = useCallback(async () => {
     try {
-      const { data } = await supabase.from('config').select('key, value')
+      const { data, error } = await supabase.from('config').select('key, value')
+      if (error) { console.error('Error fetching config:', error); return }
       if (data) {
         const rows = data as unknown as { key: string; value: string }[]
         const cfg: Record<string, string> = {}
@@ -133,11 +134,12 @@ export default function HorasTab({ isAdmin }: { isAdmin: boolean }) {
 
   const fetchEmployees = useCallback(async () => {
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('employees')
         .select('id, name, active, gestion_user_id')
         .eq('active', true)
         .order('name')
+      if (error) { console.error('Error fetching employees:', error); return }
       if (data) {
         const emps = data as unknown as HorasEmployee[]
         setEmployees(emps)
@@ -174,7 +176,8 @@ export default function HorasTab({ isAdmin }: { isAdmin: boolean }) {
         query = query.eq('employee_id', selectedEmployee)
       }
 
-      const { data } = await query
+      const { data, error } = await query
+      if (error) { console.error('Error fetching entries:', error); return }
       setEntries((data as unknown as HourEntry[]) || [])
     } catch (err) {
       console.error('Error fetching entries:', err)
@@ -230,20 +233,22 @@ export default function HorasTab({ isAdmin }: { isAdmin: boolean }) {
     try {
       if (hours === 0) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (supabase.from('hour_entries') as any)
+        const { error } = await (supabase.from('hour_entries') as any)
           .delete()
           .eq('employee_id', employeeId)
           .eq('date', date)
+        if (error) { console.error('Error deleting hour entry:', error); return }
         setEntries(prev => prev.filter(e => !(e.employee_id === employeeId && e.date === date)))
       } else {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data } = await (supabase.from('hour_entries') as any)
+        const { data, error } = await (supabase.from('hour_entries') as any)
           .upsert(
             { employee_id: employeeId, date, hours, updated_at: new Date().toISOString() },
             { onConflict: 'employee_id,date' }
           )
           .select()
           .single()
+        if (error) { console.error('Error upserting hour entry:', error); return }
         if (data) {
           const entry = data as unknown as HourEntry
           setEntries(prev => {

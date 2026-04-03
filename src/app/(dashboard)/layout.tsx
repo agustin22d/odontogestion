@@ -1,4 +1,4 @@
-import { getCurrentUser } from '@/lib/auth'
+import { getCurrentUser, signOut } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { AuthProvider } from '@/components/AuthProvider'
 import Sidebar from '@/components/Sidebar'
@@ -11,7 +11,13 @@ export default async function DashboardLayout({
   const user = await getCurrentUser()
 
   if (!user) {
+    // Clear stale session to prevent redirect loop with middleware
+    await signOut()
     redirect('/login')
+  }
+
+  if (user.must_change_password) {
+    redirect('/cambiar-clave')
   }
 
   return (
