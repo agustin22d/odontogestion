@@ -48,10 +48,10 @@ export default function TurnosPage() {
 
       {/* Tabs — solo admin ve "Turnos dados" */}
       {user?.rol === 'admin' && (
-        <div className="flex items-center gap-1 bg-surface border border-border rounded-lg p-1 mb-6 w-fit">
+        <div className="flex items-center gap-1 bg-surface border border-border rounded-lg p-1 mb-6 max-w-full overflow-x-auto">
           <button
             onClick={() => setActiveTab('agenda')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
               activeTab === 'agenda'
                 ? 'bg-green-primary text-white shadow-sm'
                 : 'text-text-secondary hover:text-text-primary hover:bg-beige'
@@ -62,7 +62,7 @@ export default function TurnosPage() {
           </button>
           <button
             onClick={() => setActiveTab('agendados')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
               activeTab === 'agendados'
                 ? 'bg-green-primary text-white shadow-sm'
                 : 'text-text-secondary hover:text-text-primary hover:bg-beige'

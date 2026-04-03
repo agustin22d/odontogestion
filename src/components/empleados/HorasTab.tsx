@@ -467,7 +467,7 @@ export default function HorasTab({ isAdmin }: { isAdmin: boolean }) {
     return (
       <div>
         {/* Sub-tabs */}
-        <div className="flex items-center gap-1 bg-surface border border-border rounded-lg p-1 mb-6 w-fit">
+        <div className="flex items-center gap-1 bg-surface border border-border rounded-lg p-1 mb-6 max-w-full overflow-x-auto">
           {([
             { id: 'resumen' as AdminView, label: 'Resumen', icon: <BarChart3 size={14} /> },
             { id: 'calendario' as AdminView, label: 'Calendario', icon: <Calendar size={14} /> },

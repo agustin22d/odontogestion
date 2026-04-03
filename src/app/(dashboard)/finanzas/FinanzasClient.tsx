@@ -75,12 +75,12 @@ export default function FinanzasPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-1 bg-surface border border-border rounded-lg p-1 mb-6 w-fit overflow-x-auto max-w-full">
+      <div className="flex items-center gap-1 bg-surface border border-border rounded-lg p-1 mb-6 max-w-full overflow-x-auto">
         {TABS.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap shrink-0
+            className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap shrink-0
               ${activeTab === tab.id
                 ? 'bg-green-primary text-white shadow-sm'
                 : 'text-text-secondary hover:text-text-primary hover:bg-beige'
