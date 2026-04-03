@@ -226,21 +226,18 @@ function ResumenTab() {
   return (
     <div>
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
-        <span className="text-sm text-text-secondary">Resumen financiero del mes</span>
-        <div className="flex items-center gap-2 sm:ml-auto">
-          <Filter size={14} className="text-text-muted" />
-          <select
-            value={sedeFilter}
-            onChange={(e) => setSedeFilter(e.target.value)}
-            className="text-sm border border-border rounded-lg px-3 py-1.5 bg-surface text-text-primary focus:outline-none focus:border-green-primary"
-          >
-            <option value="todas">Todas las sedes</option>
-            {sedes.map(s => (
-              <option key={s.id} value={s.id}>{s.nombre}</option>
-            ))}
-          </select>
-        </div>
+      <div className="flex flex-wrap items-center gap-2 mb-6">
+        <span className="text-sm text-text-secondary mr-auto">Resumen financiero del mes</span>
+        <select
+          value={sedeFilter}
+          onChange={(e) => setSedeFilter(e.target.value)}
+          className="text-sm border border-border rounded-lg px-2 py-1.5 bg-surface text-text-primary focus:outline-none focus:border-green-primary"
+        >
+          <option value="todas">Todas las sedes</option>
+          {sedes.map(s => (
+            <option key={s.id} value={s.id}>{s.nombre}</option>
+          ))}
+        </select>
       </div>
 
       {/* KPI Cards */}
@@ -406,21 +403,26 @@ function CobranzasTab() {
 
   const fetchCobranzas = useCallback(async () => {
     setLoading(true)
-    let query = supabase
-      .from('cobranzas')
-      .select('*, sedes(*)')
-      .eq('fecha', fecha)
-      .order('created_at', { ascending: false })
+    try {
+      let query = supabase
+        .from('cobranzas')
+        .select('*, sedes(*)')
+        .eq('fecha', fecha)
+        .order('created_at', { ascending: false })
 
-    // sede filter applied client-side to include multi-sede entries
+      // sede filter applied client-side to include multi-sede entries
 
-    if (user?.rol === 'rolC' && user.sede_id) {
-      query = query.eq('sede_id', user.sede_id)
+      if (user?.rol === 'rolC' && user.sede_id) {
+        query = query.eq('sede_id', user.sede_id)
+      }
+
+      const { data } = await query
+      setCobranzas((data as CobranzaConSede[]) || [])
+    } catch (err) {
+      console.error('Error fetching cobranzas:', err)
+    } finally {
+      setLoading(false)
     }
-
-    const { data } = await query
-    setCobranzas((data as CobranzaConSede[]) || [])
-    setLoading(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fecha, user])
 
@@ -767,19 +769,19 @@ function CobranzasTab() {
       )}
 
       {/* Date nav + filters */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
-        <div className="flex items-center gap-2 bg-surface border border-border rounded-lg px-2 py-1.5">
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <div className="flex items-center gap-1 bg-surface border border-border rounded-lg px-2 py-1.5">
           <button onClick={() => changeDate(-1)} className="p-1 hover:bg-beige rounded transition-colors">
-            <ChevronLeft size={18} className="text-text-secondary" />
+            <ChevronLeft size={16} className="text-text-secondary" />
           </button>
           <input
             type="date"
             value={fecha}
             onChange={(e) => setFecha(e.target.value)}
-            className="border-none bg-transparent text-sm font-medium text-text-primary focus:outline-none"
+            className="border-none bg-transparent text-sm font-medium text-text-primary focus:outline-none w-[130px]"
           />
           <button onClick={() => changeDate(1)} className="p-1 hover:bg-beige rounded transition-colors">
-            <ChevronRight size={18} className="text-text-secondary" />
+            <ChevronRight size={16} className="text-text-secondary" />
           </button>
           {!isToday && (
             <button onClick={goToday} className="text-xs text-green-primary hover:text-green-dark font-medium ml-1">
@@ -788,29 +790,27 @@ function CobranzasTab() {
           )}
         </div>
 
-        <span className="text-sm text-text-secondary capitalize">{formatFecha(fecha)}</span>
+        <select
+          value={sedeFilter}
+          onChange={(e) => setSedeFilter(e.target.value)}
+          className="text-sm border border-border rounded-lg px-2 py-1.5 bg-surface text-text-primary focus:outline-none focus:border-green-primary"
+        >
+          <option value="todas">Todas las sedes</option>
+          {sedes.map(s => (
+            <option key={s.id} value={s.id}>{s.nombre}</option>
+          ))}
+        </select>
 
-        <div className="flex items-center gap-2 sm:ml-auto">
-          <Filter size={14} className="text-text-muted" />
-          <select
-            value={sedeFilter}
-            onChange={(e) => setSedeFilter(e.target.value)}
-            className="text-sm border border-border rounded-lg px-3 py-1.5 bg-surface text-text-primary focus:outline-none focus:border-green-primary"
-          >
-            <option value="todas">Todas las sedes</option>
-            {sedes.map(s => (
-              <option key={s.id} value={s.id}>{s.nombre}</option>
-            ))}
-          </select>
-          {user?.rol === 'admin' && (
-            <SyncButton
-              label="Sync Pagos"
-              endpoints={[{ url: '/api/sync-pagos', body: { dias: 7 } }]}
-              onDone={() => fetchCobranzas()}
-            />
-          )}
-        </div>
+        {user?.rol === 'admin' && (
+          <SyncButton
+            label="Sync Pagos"
+            endpoints={[{ url: '/api/sync-pagos', body: { dias: 7 } }]}
+            onDone={() => fetchCobranzas()}
+          />
+        )}
       </div>
+
+      <p className="text-sm text-text-secondary capitalize mb-4">{formatFecha(fecha)}</p>
 
       {/* Stats */}
       <div className="flex flex-wrap gap-3 mb-4">
@@ -1480,47 +1480,44 @@ function GastosTab() {
       )}
 
       {/* Month nav + filters */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
-        <div className="flex items-center gap-2 bg-surface border border-border rounded-lg px-2 py-1.5">
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <div className="flex items-center gap-1 bg-surface border border-border rounded-lg px-2 py-1.5">
           <button onClick={() => changeMonth(-1)} className="p-1 hover:bg-beige rounded transition-colors">
-            <ChevronLeft size={18} className="text-text-secondary" />
+            <ChevronLeft size={16} className="text-text-secondary" />
           </button>
-          <span className="text-sm font-medium text-text-primary px-2 min-w-[140px] text-center">
+          <span className="text-sm font-medium text-text-primary px-2 min-w-[110px] text-center capitalize">
             {formatMes(mesFilter)}
           </span>
           <button onClick={() => changeMonth(1)} className="p-1 hover:bg-beige rounded transition-colors">
-            <ChevronRight size={18} className="text-text-secondary" />
+            <ChevronRight size={16} className="text-text-secondary" />
           </button>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
-          <Filter size={14} className="text-text-muted" />
-          <select
-            value={sedeFilter}
-            onChange={e => setSedeFilter(e.target.value)}
-            className="text-sm border border-border rounded-lg px-3 py-1.5 bg-surface text-text-primary focus:outline-none focus:border-green-primary"
-          >
-            <option value="todas">Todas las sedes</option>
-            {sedes.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-          </select>
-          <select
-            value={catFilter}
-            onChange={e => setCatFilter(e.target.value)}
-            className="text-sm border border-border rounded-lg px-3 py-1.5 bg-surface text-text-primary focus:outline-none focus:border-green-primary"
-          >
-            <option value="todas">Todas las categorias</option>
-            {GASTO_CATEGORIAS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-          </select>
-          <select
-            value={estadoFilter}
-            onChange={e => setEstadoFilter(e.target.value)}
-            className="text-sm border border-border rounded-lg px-3 py-1.5 bg-surface text-text-primary focus:outline-none focus:border-green-primary"
-          >
-            <option value="todos">Todos los estados</option>
-            <option value="pendiente">Pendiente</option>
-            <option value="pagado">Pagado</option>
-          </select>
-        </div>
+        <select
+          value={sedeFilter}
+          onChange={e => setSedeFilter(e.target.value)}
+          className="text-sm border border-border rounded-lg px-2 py-1.5 bg-surface text-text-primary focus:outline-none focus:border-green-primary"
+        >
+          <option value="todas">Todas las sedes</option>
+          {sedes.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+        </select>
+        <select
+          value={catFilter}
+          onChange={e => setCatFilter(e.target.value)}
+          className="text-sm border border-border rounded-lg px-2 py-1.5 bg-surface text-text-primary focus:outline-none focus:border-green-primary"
+        >
+          <option value="todas">Todas las categorias</option>
+          {GASTO_CATEGORIAS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+        </select>
+        <select
+          value={estadoFilter}
+          onChange={e => setEstadoFilter(e.target.value)}
+          className="text-sm border border-border rounded-lg px-2 py-1.5 bg-surface text-text-primary focus:outline-none focus:border-green-primary"
+        >
+          <option value="todos">Todos los estados</option>
+          <option value="pendiente">Pendiente</option>
+          <option value="pagado">Pagado</option>
+        </select>
       </div>
 
       {/* Summary cards */}

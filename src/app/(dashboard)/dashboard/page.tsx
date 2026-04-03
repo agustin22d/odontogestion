@@ -208,8 +208,9 @@ function AdminDashboard() {
       })))
     } catch (err) {
       console.error('Error fetching dashboard:', err)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hoy, sedeFilter])
 

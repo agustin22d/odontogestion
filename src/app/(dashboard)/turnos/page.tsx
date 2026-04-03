@@ -37,13 +37,23 @@ const ESTADO_STYLES: Record<string, { bg: string; text: string; label: string }>
 export default function TurnosPage() {
   const { user } = useAuth()
   const [activeTab, setActiveTab] = useState<TabId>('agenda')
+  const [syncKey, setSyncKey] = useState(0)
 
   return (
     <div>
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="font-display text-2xl font-semibold text-text-primary mb-1">Turnos</h1>
-        <p className="text-sm text-text-secondary">Agenda diaria y seguimiento de turnos agendados</p>
+      <div className="flex items-start justify-between gap-3 mb-6">
+        <div>
+          <h1 className="font-display text-2xl font-semibold text-text-primary mb-1">Turnos</h1>
+          <p className="text-sm text-text-secondary">Agenda diaria y seguimiento de turnos agendados</p>
+        </div>
+        {user?.rol === 'admin' && (
+          <SyncButton
+            label="Sync Turnos"
+            endpoints={[{ url: '/api/sync-dentalink', body: { dias: 7 } }]}
+            onDone={() => setSyncKey(k => k + 1)}
+          />
+        )}
       </div>
 
       {/* Tabs — solo admin ve "Turnos dados" */}
@@ -74,7 +84,7 @@ export default function TurnosPage() {
         </div>
       )}
 
-      {activeTab === 'agenda' && <AgendaTab />}
+      {activeTab === 'agenda' && <AgendaTab syncKey={syncKey} />}
       {activeTab === 'agendados' && user?.rol === 'admin' && <AgendadosTab />}
     </div>
   )
@@ -83,7 +93,7 @@ export default function TurnosPage() {
 // ============================================
 // Tab: Agenda del día (existente)
 // ============================================
-function AgendaTab() {
+function AgendaTab({ syncKey }: { syncKey: number }) {
   const { user } = useAuth()
   const supabase = createClient()
   const [turnos, setTurnos] = useState<TurnoConSede[]>([])
@@ -101,21 +111,26 @@ function AgendaTab() {
 
   const fetchTurnos = useCallback(async () => {
     setLoading(true)
-    let query = supabase
-      .from('turnos')
-      .select('*, sedes(*)')
-      .eq('fecha', fecha)
-      .order('hora', { ascending: true })
+    try {
+      let query = supabase
+        .from('turnos')
+        .select('*, sedes(*)')
+        .eq('fecha', fecha)
+        .order('hora', { ascending: true })
 
-    if (sedeFilter !== 'todas') {
-      query = query.eq('sede_id', sedeFilter)
+      if (sedeFilter !== 'todas') {
+        query = query.eq('sede_id', sedeFilter)
+      }
+
+      const { data } = await query
+      setTurnos((data as TurnoConSede[]) || [])
+    } catch (err) {
+      console.error('Error fetching turnos:', err)
+    } finally {
+      setLoading(false)
     }
-
-    const { data } = await query
-    setTurnos((data as TurnoConSede[]) || [])
-    setLoading(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fecha, sedeFilter, user])
+  }, [fecha, sedeFilter, user, syncKey])
 
   useEffect(() => { fetchSedes() }, [fetchSedes])
   useEffect(() => { fetchTurnos() }, [fetchTurnos])
@@ -153,20 +168,20 @@ function AgendaTab() {
 
   return (
     <>
-      {/* Date nav + sync + filters */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
-        <div className="flex items-center gap-2 bg-surface border border-border rounded-lg px-2 py-1.5">
+      {/* Date nav + filters */}
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <div className="flex items-center gap-1 bg-surface border border-border rounded-lg px-2 py-1.5">
           <button onClick={() => changeDate(-1)} className="p-1 hover:bg-beige rounded transition-colors">
-            <ChevronLeft size={18} className="text-text-secondary" />
+            <ChevronLeft size={16} className="text-text-secondary" />
           </button>
           <input
             type="date"
             value={fecha}
             onChange={(e) => setFecha(e.target.value)}
-            className="border-none bg-transparent text-sm font-medium text-text-primary focus:outline-none"
+            className="border-none bg-transparent text-sm font-medium text-text-primary focus:outline-none w-[130px]"
           />
           <button onClick={() => changeDate(1)} className="p-1 hover:bg-beige rounded transition-colors">
-            <ChevronRight size={18} className="text-text-secondary" />
+            <ChevronRight size={16} className="text-text-secondary" />
           </button>
           {!isToday && (
             <button onClick={goToday} className="text-xs text-green-primary hover:text-green-dark font-medium ml-1">
@@ -175,29 +190,19 @@ function AgendaTab() {
           )}
         </div>
 
-        <span className="text-sm text-text-secondary capitalize">{formatFecha(fecha)}</span>
-
-        <div className="flex items-center gap-2 sm:ml-auto">
-          <Filter size={14} className="text-text-muted" />
-          <select
-            value={sedeFilter}
-            onChange={(e) => setSedeFilter(e.target.value)}
-            className="text-sm border border-border rounded-lg px-3 py-1.5 bg-surface text-text-primary focus:outline-none focus:border-green-primary"
-          >
-            <option value="todas">Todas las sedes</option>
-            {sedes.map(s => (
-              <option key={s.id} value={s.id}>{s.nombre}</option>
-            ))}
-          </select>
-          {user?.rol === 'admin' && (
-            <SyncButton
-              label="Sync Turnos"
-              endpoints={[{ url: '/api/sync-dentalink', body: { dias: 7 } }]}
-              onDone={() => fetchTurnos()}
-            />
-          )}
-        </div>
+        <select
+          value={sedeFilter}
+          onChange={(e) => setSedeFilter(e.target.value)}
+          className="text-sm border border-border rounded-lg px-2 py-1.5 bg-surface text-text-primary focus:outline-none focus:border-green-primary"
+        >
+          <option value="todas">Todas las sedes</option>
+          {sedes.map(s => (
+            <option key={s.id} value={s.id}>{s.nombre}</option>
+          ))}
+        </select>
       </div>
+
+      <p className="text-sm text-text-secondary capitalize mb-4">{formatFecha(fecha)}</p>
 
       {/* Search */}
       <div className="relative mb-4">

@@ -58,23 +58,28 @@ export default function CobranzasPage() {
 
   const fetchCobranzas = useCallback(async () => {
     setLoading(true)
-    let query = supabase
-      .from('cobranzas')
-      .select('*, sedes(*)')
-      .eq('fecha', fecha)
-      .order('created_at', { ascending: false })
+    try {
+      let query = supabase
+        .from('cobranzas')
+        .select('*, sedes(*)')
+        .eq('fecha', fecha)
+        .order('created_at', { ascending: false })
 
-    if (sedeFilter !== 'todas') {
-      query = query.eq('sede_id', sedeFilter)
+      if (sedeFilter !== 'todas') {
+        query = query.eq('sede_id', sedeFilter)
+      }
+
+      if (user?.rol === 'rolC' && user.sede_id) {
+        query = query.eq('sede_id', user.sede_id)
+      }
+
+      const { data } = await query
+      setCobranzas((data as CobranzaConSede[]) || [])
+    } catch (err) {
+      console.error('Error fetching cobranzas:', err)
+    } finally {
+      setLoading(false)
     }
-
-    if (user?.rol === 'rolC' && user.sede_id) {
-      query = query.eq('sede_id', user.sede_id)
-    }
-
-    const { data } = await query
-    setCobranzas((data as CobranzaConSede[]) || [])
-    setLoading(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fecha, sedeFilter, user])
 
@@ -162,28 +167,28 @@ export default function CobranzasPage() {
   return (
     <div>
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+      <div className="flex items-start justify-between gap-3 mb-6">
         <div>
           <h1 className="font-display text-2xl font-semibold text-text-primary mb-1">Cobranzas</h1>
           <p className="text-sm text-text-secondary">Registro de cobros por sede — datos de Dentalink + manual</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           {user?.rol === 'admin' && (
             <button
               onClick={handleSync}
               disabled={syncing}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-green-primary hover:bg-green-dark text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-primary hover:bg-green-dark text-white text-xs sm:text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
             >
-              <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
-              {syncing ? 'Sincronizando...' : 'Sync Pagos'}
+              <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
+              <span className="hidden sm:inline">{syncing ? 'Sincronizando...' : 'Sync Pagos'}</span>
             </button>
           )}
           <button
             onClick={() => setShowForm(!showForm)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-gold hover:bg-gold-dark text-white text-sm font-medium rounded-lg transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gold hover:bg-gold-dark text-white text-xs sm:text-sm font-medium rounded-lg transition-colors"
           >
-            {showForm ? <X size={16} /> : <Plus size={16} />}
-            {showForm ? 'Cancelar' : 'Agregar'}
+            {showForm ? <X size={14} /> : <Plus size={14} />}
+            <span className="hidden sm:inline">{showForm ? 'Cancelar' : 'Agregar'}</span>
           </button>
         </div>
       </div>
@@ -283,19 +288,19 @@ export default function CobranzasPage() {
       )}
 
       {/* Date nav + filters */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
-        <div className="flex items-center gap-2 bg-surface border border-border rounded-lg px-2 py-1.5">
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <div className="flex items-center gap-1 bg-surface border border-border rounded-lg px-2 py-1.5">
           <button onClick={() => changeDate(-1)} className="p-1 hover:bg-beige rounded transition-colors">
-            <ChevronLeft size={18} className="text-text-secondary" />
+            <ChevronLeft size={16} className="text-text-secondary" />
           </button>
           <input
             type="date"
             value={fecha}
             onChange={(e) => setFecha(e.target.value)}
-            className="border-none bg-transparent text-sm font-medium text-text-primary focus:outline-none"
+            className="border-none bg-transparent text-sm font-medium text-text-primary focus:outline-none w-[130px]"
           />
           <button onClick={() => changeDate(1)} className="p-1 hover:bg-beige rounded transition-colors">
-            <ChevronRight size={18} className="text-text-secondary" />
+            <ChevronRight size={16} className="text-text-secondary" />
           </button>
           {!isToday && (
             <button onClick={goToday} className="text-xs text-green-primary hover:text-green-dark font-medium ml-1">
@@ -304,24 +309,21 @@ export default function CobranzasPage() {
           )}
         </div>
 
-        <span className="text-sm text-text-secondary capitalize">{formatFecha(fecha)}</span>
-
         {user?.rol === 'admin' && (
-          <div className="flex items-center gap-2 sm:ml-auto">
-            <Filter size={14} className="text-text-muted" />
-            <select
-              value={sedeFilter}
-              onChange={(e) => setSedeFilter(e.target.value)}
-              className="text-sm border border-border rounded-lg px-3 py-1.5 bg-surface text-text-primary focus:outline-none focus:border-green-primary"
-            >
-              <option value="todas">Todas las sedes</option>
-              {sedes.map(s => (
-                <option key={s.id} value={s.id}>{s.nombre}</option>
-              ))}
-            </select>
-          </div>
+          <select
+            value={sedeFilter}
+            onChange={(e) => setSedeFilter(e.target.value)}
+            className="text-sm border border-border rounded-lg px-2 py-1.5 bg-surface text-text-primary focus:outline-none focus:border-green-primary"
+          >
+            <option value="todas">Todas las sedes</option>
+            {sedes.map(s => (
+              <option key={s.id} value={s.id}>{s.nombre}</option>
+            ))}
+          </select>
         )}
       </div>
+
+      <p className="text-sm text-text-secondary capitalize mb-4">{formatFecha(fecha)}</p>
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
