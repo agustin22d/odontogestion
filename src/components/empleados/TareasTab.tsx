@@ -296,7 +296,7 @@ export default function TareasTab({ isAdmin }: { isAdmin: boolean }) {
           </div>
         ) : (
           <div className="space-y-6">
-            {['rolA', 'rolB', 'rolC'].map(rol => {
+            {['rolA', 'rolB', 'rolC', 'rolD'].map(rol => {
               const empsDelRol = empleados.filter(e => e.rol === rol)
               if (empsDelRol.length === 0) return null
               const plantillasDelRol = plantillas.filter(p => p.rol === rol)
