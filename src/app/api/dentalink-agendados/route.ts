@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { fetchPaginado } from '@/lib/dentalink'
-import { getArgentinaToday } from '@/lib/utils/dates'
 
 const API_BASE = process.env.DENTALINK_API_BASE || 'https://api.dentalink.healthatom.com/api/v1'
 const API_TOKEN = process.env.DENTALINK_API_TOKEN || ''
@@ -27,14 +26,6 @@ interface DentalinkCitaFull {
   fecha_actualizacion: string
 }
 
-interface DentalinkPaciente {
-  id: number
-  nombre: string
-  apellido: string
-  fecha_afiliacion: string
-  [key: string]: unknown
-}
-
 function detectarOrigen(comentario: string): string {
   const c = (comentario || '').toLowerCase()
   if (c.includes('ig') || c.includes('insta') || c.includes('instagram')) return 'Instagram'
@@ -50,20 +41,47 @@ function extraerFecha(valor: unknown): string {
   return valor.split(' ')[0].split('T')[0]
 }
 
-async function fetchPaciente(idPaciente: number): Promise<Record<string, unknown> | null> {
-  try {
-    const res = await fetch(`${API_BASE}/pacientes/${idPaciente}`, {
-      headers: {
-        'Authorization': `Token ${API_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
+/**
+ * Batch de lookups de pacientes con rate limiting.
+ * Ejecuta en lotes de `batchSize` en paralelo, con `delayMs` entre lotes.
+ */
+async function batchFetchPacientes(
+  patientIds: number[],
+  batchSize = 10,
+  delayMs = 500
+): Promise<Map<number, Record<string, unknown>>> {
+  const results = new Map<number, Record<string, unknown>>()
+
+  for (let i = 0; i < patientIds.length; i += batchSize) {
+    const batch = patientIds.slice(i, i + batchSize)
+    const promises = batch.map(async (id) => {
+      try {
+        const res = await fetch(`${API_BASE}/pacientes/${id}`, {
+          headers: {
+            'Authorization': `Token ${API_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+        })
+        if (!res.ok) return { id, data: null }
+        const json = await res.json()
+        return { id, data: json.data || json }
+      } catch {
+        return { id, data: null }
+      }
     })
-    if (!res.ok) return null
-    const json = await res.json()
-    return json.data || json
-  } catch {
-    return null
+
+    const batchResults = await Promise.all(promises)
+    for (const r of batchResults) {
+      if (r.data) results.set(r.id, r.data)
+    }
+
+    // Pausa entre lotes para evitar rate limiting
+    if (i + batchSize < patientIds.length) {
+      await new Promise(r => setTimeout(r, delayMs))
+    }
   }
+
+  return results
 }
 
 export async function GET(request: Request) {
@@ -91,14 +109,40 @@ export async function GET(request: Request) {
 
   try {
     // "Turnos dados" = pacientes REGISTRADOS en la fecha seleccionada
-    // (fecha_afiliacion = fecha), independientemente de cuándo es su turno.
+    // (fecha_afiliacion = fecha), sin importar cuándo es su turno.
     //
-    // Estrategia con fallback:
-    // 1) Intentar /pacientes con fecha_actualizacion (la mayoría de endpoints lo soportan)
-    //    y filtrar por fecha_afiliacion del response (sin lookups individuales)
-    // 2) Si falla, usar /citas con ventana amplia + lookups individuales de pacientes
+    // Estrategia: consultar citas con fecha_actualizacion = día exacto
+    // (sin expandir ventana para evitar rate limiting de Dentalink).
+    // Para cada paciente único, verificar fecha_afiliacion en batch.
+    //
+    // Hoy funciona perfecto (~90 pacientes, todos los lookups exitosos).
+    // Para fechas pasadas: captura citas no actualizadas desde ese día.
 
-    let agendados: Array<{
+    const citas = await fetchPaginado<DentalinkCitaFull>('/citas', {
+      fecha_actualizacion: [
+        { gte: `${fecha} 00:00:00` },
+        { lte: `${fecha} 23:59:59` },
+      ],
+    })
+
+    // Deduplicar pacientes
+    const pacienteIds: number[] = []
+    const pacienteIdSet = new Set<number>()
+    const citaPorPaciente = new Map<number, DentalinkCitaFull>()
+
+    for (const cita of citas) {
+      if (!pacienteIdSet.has(cita.id_paciente)) {
+        pacienteIdSet.add(cita.id_paciente)
+        pacienteIds.push(cita.id_paciente)
+        citaPorPaciente.set(cita.id_paciente, cita)
+      }
+    }
+
+    // Batch lookup de pacientes (10 en paralelo, 500ms entre lotes)
+    const pacientesData = await batchFetchPacientes(pacienteIds, 10, 500)
+
+    // Filtrar por fecha_afiliacion = fecha seleccionada
+    const agendados: Array<{
       id: number
       paciente: string
       fecha_turno: string
@@ -109,129 +153,33 @@ export async function GET(request: Request) {
       estado: string
       comentario: string
       origen: string
-      fecha_alta: string
     }> = []
-    let metodo = ''
-    let debugInfo: Record<string, unknown> = {}
 
-    try {
-      // Estrategia 1: Consultar pacientes directamente
-      // fecha_actualizacion ≈ fecha_afiliacion para pacientes nuevos
-      // (los perfiles de pacientes rara vez se actualizan después de la creación)
-      const pacientes = await fetchPaginado<DentalinkPaciente>('/pacientes', {
-        fecha_actualizacion: [
-          { gte: `${fecha} 00:00:00` },
-          { lte: `${fecha} 23:59:59` },
-        ],
+    let lookupsFailed = 0
+
+    for (const patientId of pacienteIds) {
+      const paciente = pacientesData.get(patientId)
+      if (!paciente) {
+        lookupsFailed++
+        continue
+      }
+
+      const fechaAlta = extraerFecha(paciente['fecha_afiliacion'])
+      if (fechaAlta !== fecha) continue
+
+      const cita = citaPorPaciente.get(patientId)!
+      agendados.push({
+        id: cita.id,
+        paciente: cita.nombre_paciente?.trim() || 'Sin nombre',
+        fecha_turno: cita.fecha,
+        hora: cita.hora_inicio?.slice(0, 5) || '',
+        profesional: cita.nombre_dentista || '',
+        sede: cita.nombre_sucursal || '',
+        id_sucursal: cita.id_sucursal,
+        estado: cita.estado_cita || '',
+        comentario: cita.comentarios || '',
+        origen: detectarOrigen(cita.comentarios),
       })
-
-      // Filtrar por fecha_afiliacion = fecha seleccionada
-      const nuevos = pacientes.filter(p => {
-        const fa = extraerFecha(p.fecha_afiliacion)
-        return fa === fecha
-      })
-
-      metodo = 'pacientes_directo'
-      debugInfo = {
-        total_pacientes_actualizados: pacientes.length,
-        total_con_afiliacion_match: nuevos.length,
-      }
-
-      // Para cada paciente nuevo, obtener su primera cita
-      for (const pac of nuevos) {
-        const citas = await fetchPaginado<DentalinkCitaFull>('/citas', {
-          id_paciente: pac.id,
-        })
-
-        const primera = citas.sort((a, b) => {
-          return `${a.fecha} ${a.hora_inicio}`.localeCompare(`${b.fecha} ${b.hora_inicio}`)
-        })[0]
-
-        const nombre = primera
-          ? primera.nombre_paciente?.trim()
-          : [pac.nombre, pac.apellido].filter(Boolean).join(' ').trim()
-
-        agendados.push({
-          id: primera?.id || pac.id,
-          paciente: nombre || 'Sin nombre',
-          fecha_turno: primera?.fecha || '',
-          hora: primera?.hora_inicio?.slice(0, 5) || '',
-          profesional: primera?.nombre_dentista || '',
-          sede: primera?.nombre_sucursal || '',
-          id_sucursal: primera?.id_sucursal || 0,
-          estado: primera?.estado_cita || '',
-          comentario: primera?.comentarios || '',
-          origen: detectarOrigen(primera?.comentarios || ''),
-          fecha_alta: fecha,
-        })
-
-        await new Promise(r => setTimeout(r, 150))
-      }
-    } catch (pacError) {
-      // Estrategia 2: Fallback con citas
-      console.log('Pacientes endpoint falló, usando fallback de citas:', pacError)
-
-      // Ventana: fecha seleccionada hasta +7 días o hoy
-      const windowEnd = new Date(fecha + 'T12:00:00')
-      windowEnd.setDate(windowEnd.getDate() + 7)
-      const today = getArgentinaToday()
-      const endStr = windowEnd.toISOString().split('T')[0]
-      const effectiveEnd = endStr > today ? today : endStr
-
-      const citas = await fetchPaginado<DentalinkCitaFull>('/citas', {
-        fecha_actualizacion: [
-          { gte: `${fecha} 00:00:00` },
-          { lte: `${effectiveEnd} 23:59:59` },
-        ],
-      })
-
-      // Deduplicar por paciente, verificar fecha_afiliacion
-      const pacientesVistos = new Set<number>()
-      const sampleDates: Record<string, number> = {}
-      let lookupsFailed = 0
-
-      for (const cita of citas) {
-        if (pacientesVistos.has(cita.id_paciente)) continue
-        pacientesVistos.add(cita.id_paciente)
-
-        const paciente = await fetchPaciente(cita.id_paciente)
-        if (!paciente) {
-          lookupsFailed++
-          continue
-        }
-
-        const fechaAlta = extraerFecha(paciente['fecha_afiliacion'])
-
-        // Track distribution for debug
-        sampleDates[fechaAlta || 'null'] = (sampleDates[fechaAlta || 'null'] || 0) + 1
-
-        if (fechaAlta !== fecha) continue
-
-        agendados.push({
-          id: cita.id,
-          paciente: cita.nombre_paciente?.trim() || 'Sin nombre',
-          fecha_turno: cita.fecha,
-          hora: cita.hora_inicio?.slice(0, 5) || '',
-          profesional: cita.nombre_dentista || '',
-          sede: cita.nombre_sucursal || '',
-          id_sucursal: cita.id_sucursal,
-          estado: cita.estado_cita || '',
-          comentario: cita.comentarios || '',
-          origen: detectarOrigen(cita.comentarios),
-          fecha_alta: fechaAlta,
-        })
-
-        await new Promise(r => setTimeout(r, 100))
-      }
-
-      metodo = 'citas_fallback'
-      debugInfo = {
-        ventana: `${fecha} → ${effectiveEnd}`,
-        total_citas: citas.length,
-        pacientes_unicos: pacientesVistos.size,
-        lookups_failed: lookupsFailed,
-        distribucion_fechas_alta: sampleDates,
-      }
     }
 
     // Resumen
@@ -245,8 +193,12 @@ export async function GET(request: Request) {
     return NextResponse.json({
       fecha,
       total: agendados.length,
-      metodo,
-      debug: debugInfo,
+      debug: {
+        total_citas: citas.length,
+        pacientes_unicos: pacienteIds.length,
+        lookups_ok: pacientesData.size,
+        lookups_failed: lookupsFailed,
+      },
       por_sede: porSede,
       por_origen: porOrigen,
       agendados,
