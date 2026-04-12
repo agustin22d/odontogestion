@@ -11,7 +11,9 @@ import {
   CheckSquare,
   XCircle,
   Building2,
-  Filter,
+  CalendarPlus,
+  Package,
+  Crown,
 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import type { Sede } from '@/types/database'
@@ -75,6 +77,9 @@ function AdminDashboard() {
   const [deudasPendientes, setDeudasPendientes] = useState(0)
   const [tareasPendientes, setTareasPendientes] = useState(0)
   const [chartData, setChartData] = useState<{ dia: string; cobrado: number; gastos: number }[]>([])
+  const [turnosDadosHoy, setTurnosDadosHoy] = useState(0)
+  const [stockBajo, setStockBajo] = useState(0)
+  const [labPendientes, setLabPendientes] = useState(0)
   const [loading, setLoading] = useState(true)
 
   const hoy = getArgentinaToday()
@@ -111,9 +116,15 @@ function AdminDashboard() {
       const chartGasQuery = supabase.from('gastos').select('fecha, monto, sede_ids').gte('fecha', inicioMes).lte('fecha', hoy)
       const sedesQuery = supabase.from('sedes').select('*').eq('activa', true).order('nombre')
 
+      // New KPIs: turnos dados hoy, stock bajo, lab pendientes
+      const turnosDadosQuery = supabase.from('pacientes_nuevos').select('id', { count: 'exact', head: true }).eq('fecha_afiliacion', hoy)
+      const stockProductosQuery = supabase.from('stock_productos').select('id, stock_minimo').eq('activo', true)
+      const stockMovQuery = supabase.from('stock_movimientos').select('producto_id, sede_id, tipo, cantidad')
+      const labQuery = supabase.from('laboratorio_casos').select('id', { count: 'exact', head: true }).in('estado', ['escaneado', 'enviada', 'en_proceso', 'a_revisar'])
+
       // Run ALL queries in parallel
-      const [turnosRes, cobHoyRes, cobSemRes, cobMesRes, deudasRes, plantillasRes, completadasTodayRes, empleadosRes, chartCobRes, chartGasRes, sedesRes] = await Promise.all([
-        turnosQuery, cobHoyQuery, cobSemQuery, cobMesQuery, deudasQuery, plantillasQuery, completadasQuery, empleadosQuery, chartCobQuery, chartGasQuery, sedesQuery,
+      const [turnosRes, cobHoyRes, cobSemRes, cobMesRes, deudasRes, plantillasRes, completadasTodayRes, empleadosRes, chartCobRes, chartGasRes, sedesRes, turnosDadosRes, stockProdRes, stockMovRes, labRes] = await Promise.all([
+        turnosQuery, cobHoyQuery, cobSemQuery, cobMesQuery, deudasQuery, plantillasQuery, completadasQuery, empleadosQuery, chartCobQuery, chartGasQuery, sedesQuery, turnosDadosQuery, stockProductosQuery, stockMovQuery, labQuery,
       ])
 
       const allSedes = (sedesRes.data || []) as Sede[]
@@ -187,6 +198,30 @@ function AdminDashboard() {
         pendientes += empPlantillas.filter((p: { id: number }) => !empCompletadas.includes(p.id)).length
       })
       setTareasPendientes(pendientes)
+
+      // Process turnos dados hoy
+      setTurnosDadosHoy(turnosDadosRes.count || 0)
+
+      // Process stock bajo: calculate stock per product-sede and count alerts
+      const productos = (stockProdRes.data || []) as { id: string; stock_minimo: number }[]
+      const movimientos = (stockMovRes.data || []) as { producto_id: string; sede_id: string; tipo: string; cantidad: number }[]
+      const stockMap: Record<string, number> = {}
+      const minimos: Record<string, number> = {}
+      for (const p of productos) minimos[p.id] = p.stock_minimo
+      for (const m of movimientos) {
+        const key = `${m.producto_id}-${m.sede_id}`
+        if (!stockMap[key]) stockMap[key] = 0
+        stockMap[key] += m.tipo === 'entrada' ? m.cantidad : -m.cantidad
+      }
+      let alertCount = 0
+      for (const [key, qty] of Object.entries(stockMap)) {
+        const prodId = key.split('-')[0]
+        if (qty <= (minimos[prodId] ?? 0)) alertCount++
+      }
+      setStockBajo(alertCount)
+
+      // Process lab pendientes
+      setLabPendientes(labRes.count || 0)
 
       // Process chart data with proportional sede filtering
       const cobByDay: Record<string, number> = {}
@@ -303,13 +338,38 @@ function AdminDashboard() {
           </div>
 
           {/* Second row */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
             <KPICard
               icon={<DollarSign size={20} />}
               label="Cobrado mes"
               value={formatMoney(cobranzaStats.mes)}
               color="green"
             />
+            <KPICard
+              icon={<CalendarPlus size={20} />}
+              label="Turnos dados hoy"
+              value={turnosDadosHoy.toString()}
+              subtitle="Pacientes nuevos"
+              color="blue"
+            />
+            <KPICard
+              icon={<Package size={20} />}
+              label="Stock bajo"
+              value={stockBajo.toString()}
+              subtitle={stockBajo > 0 ? 'Productos a reponer' : 'Todo OK'}
+              color={stockBajo > 0 ? 'red' : 'green'}
+            />
+            <KPICard
+              icon={<Crown size={20} />}
+              label="Lab en proceso"
+              value={labPendientes.toString()}
+              subtitle="Casos activos"
+              color={labPendientes > 0 ? 'amber' : 'green'}
+            />
+          </div>
+
+          {/* Third row */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             <KPICard
               icon={<CheckSquare size={20} />}
               label="Tareas pendientes"
