@@ -85,10 +85,7 @@ export default function TurnosPage() {
         </div>
       )}
 
-      {/* Monthly Analytics — solo admin, solo en tab agenda */}
-      {isAdmin && activeTab === 'agenda' && <TurnosAnalytics syncKey={syncKey} />}
-
-      {activeTab === 'agenda' && <AgendaTab syncKey={syncKey} />}
+      {activeTab === 'agenda' && <AgendaTab syncKey={syncKey} showAnalytics={isAdmin} />}
       {activeTab === 'agendados' && (isAdmin || user?.rol === 'rolA') && <AgendadosTab />}
     </div>
   )
@@ -285,7 +282,7 @@ function TurnosAnalytics({ syncKey }: { syncKey: number }) {
 // ============================================
 // Tab: Agenda del día (existente)
 // ============================================
-function AgendaTab({ syncKey }: { syncKey: number }) {
+function AgendaTab({ syncKey, showAnalytics }: { syncKey: number; showAnalytics?: boolean }) {
   const { user } = useAuth()
   const supabase = createClient()
   const [turnos, setTurnos] = useState<TurnoConSede[]>([])
@@ -393,6 +390,9 @@ function AgendaTab({ syncKey }: { syncKey: number }) {
           ))}
         </select>
       </div>
+
+      {/* Monthly Analytics — after date/sede selectors */}
+      {showAnalytics && <TurnosAnalytics syncKey={syncKey} />}
 
       <p className="text-sm text-text-secondary capitalize mb-4">{formatFecha(fecha)}</p>
 
