@@ -14,6 +14,7 @@ import {
   CalendarPlus,
   Package,
   Crown,
+  AlertTriangle,
 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import type { Sede } from '@/types/database'
@@ -80,6 +81,7 @@ function AdminDashboard() {
   const [turnosDadosHoy, setTurnosDadosHoy] = useState(0)
   const [stockBajo, setStockBajo] = useState(0)
   const [labPendientes, setLabPendientes] = useState(0)
+  const [gastosVencenHoy, setGastosVencenHoy] = useState(0)
   const [loading, setLoading] = useState(true)
 
   const hoy = getArgentinaToday()
@@ -121,10 +123,11 @@ function AdminDashboard() {
       const stockProductosQuery = supabase.from('stock_productos').select('id, stock_minimo').eq('activo', true)
       const stockMovQuery = supabase.from('stock_movimientos').select('producto_id, sede_id, tipo, cantidad')
       const labQuery = supabase.from('laboratorio_casos').select('id', { count: 'exact', head: true }).in('estado', ['escaneado', 'enviada', 'en_proceso', 'a_revisar'])
+      const gastosHoyQuery = supabase.from('gastos').select('id', { count: 'exact', head: true }).eq('estado', 'pendiente').eq('fecha_vencimiento', hoy)
 
       // Run ALL queries in parallel
-      const [turnosRes, cobHoyRes, cobSemRes, cobMesRes, deudasRes, plantillasRes, completadasTodayRes, empleadosRes, chartCobRes, chartGasRes, sedesRes, turnosDadosRes, stockProdRes, stockMovRes, labRes] = await Promise.all([
-        turnosQuery, cobHoyQuery, cobSemQuery, cobMesQuery, deudasQuery, plantillasQuery, completadasQuery, empleadosQuery, chartCobQuery, chartGasQuery, sedesQuery, turnosDadosQuery, stockProductosQuery, stockMovQuery, labQuery,
+      const [turnosRes, cobHoyRes, cobSemRes, cobMesRes, deudasRes, plantillasRes, completadasTodayRes, empleadosRes, chartCobRes, chartGasRes, sedesRes, turnosDadosRes, stockProdRes, stockMovRes, labRes, gastosHoyRes] = await Promise.all([
+        turnosQuery, cobHoyQuery, cobSemQuery, cobMesQuery, deudasQuery, plantillasQuery, completadasQuery, empleadosQuery, chartCobQuery, chartGasQuery, sedesQuery, turnosDadosQuery, stockProductosQuery, stockMovQuery, labQuery, gastosHoyQuery,
       ])
 
       const allSedes = (sedesRes.data || []) as Sede[]
@@ -223,6 +226,9 @@ function AdminDashboard() {
       // Process lab pendientes
       setLabPendientes(labRes.count || 0)
 
+      // Process gastos que vencen hoy
+      setGastosVencenHoy(gastosHoyRes.count || 0)
+
       // Process chart data with proportional sede filtering
       const cobByDay: Record<string, number> = {}
       const gasByDay: Record<string, number> = {}
@@ -305,8 +311,8 @@ function AdminDashboard() {
         <div className="text-center text-text-muted py-12 text-sm">Cargando dashboard...</div>
       ) : (
         <>
-          {/* KPI Cards — top row */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          {/* Row 1: Cobrado hoy, Cobrado mes, Por cobrar, Gastos hoy */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
             <KPICard
               icon={<DollarSign size={20} />}
               label="Cobrado hoy"
@@ -315,11 +321,41 @@ function AdminDashboard() {
               color="green"
             />
             <KPICard
+              icon={<DollarSign size={20} />}
+              label="Cobrado mes"
+              value={formatMoney(cobranzaStats.mes)}
+              color="green"
+            />
+            <KPICard
+              icon={<Clock size={20} />}
+              label="Por cobrar"
+              value={formatMoney(deudasPendientes)}
+              subtitle="Deudas activas"
+              color="gold"
+            />
+            <KPICard
+              icon={<AlertTriangle size={20} />}
+              label="Gastos hoy"
+              value={gastosVencenHoy.toString()}
+              subtitle={gastosVencenHoy > 0 ? 'Vencimientos pendientes' : 'Sin vencimientos'}
+              color={gastosVencenHoy > 0 ? 'red' : 'green'}
+            />
+          </div>
+
+          {/* Row 2: Turnos hoy, No-shows hoy, Tasa de show, Cancelados hoy */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+            <KPICard
               icon={<CalendarDays size={20} />}
               label="Turnos hoy"
               value={turnoStats.total.toString()}
               subtitle={`${turnoStats.agendados} pendientes`}
               color="blue"
+            />
+            <KPICard
+              icon={<XCircle size={20} />}
+              label="No-shows hoy"
+              value={turnoStats.noShows.toString()}
+              color="red"
             />
             <KPICard
               icon={<TrendingUp size={20} />}
@@ -329,22 +365,15 @@ function AdminDashboard() {
               color={turnoStats.tasaShow >= 80 ? 'green' : turnoStats.tasaShow >= 60 ? 'amber' : 'red'}
             />
             <KPICard
-              icon={<Clock size={20} />}
-              label="Por cobrar"
-              value={formatMoney(deudasPendientes)}
-              subtitle="Deudas activas"
-              color="gold"
+              icon={<CalendarDays size={20} />}
+              label="Cancelados hoy"
+              value={turnoStats.cancelados.toString()}
+              color="amber"
             />
           </div>
 
-          {/* Second row */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-            <KPICard
-              icon={<DollarSign size={20} />}
-              label="Cobrado mes"
-              value={formatMoney(cobranzaStats.mes)}
-              color="green"
-            />
+          {/* Row 3: Turnos dados hoy, Stock bajo, Lab en proceso, Tareas pendientes */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             <KPICard
               icon={<CalendarPlus size={20} />}
               label="Turnos dados hoy"
@@ -366,28 +395,12 @@ function AdminDashboard() {
               subtitle="Casos activos"
               color={labPendientes > 0 ? 'amber' : 'green'}
             />
-          </div>
-
-          {/* Third row */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             <KPICard
               icon={<CheckSquare size={20} />}
               label="Tareas pendientes"
               value={tareasPendientes.toString()}
               subtitle="Del equipo hoy"
               color="purple"
-            />
-            <KPICard
-              icon={<XCircle size={20} />}
-              label="No-shows hoy"
-              value={turnoStats.noShows.toString()}
-              color="red"
-            />
-            <KPICard
-              icon={<CalendarDays size={20} />}
-              label="Cancelados hoy"
-              value={turnoStats.cancelados.toString()}
-              color="amber"
             />
           </div>
 
