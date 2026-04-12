@@ -497,7 +497,7 @@ const ORIGEN_COLORS: Record<string, { bg: string; text: string }> = {
 
 function AgendadosTab() {
   const [fecha, setFecha] = useState(() => getArgentinaToday())
-  const [data, setData] = useState<{ total: number; total_citas_ventana?: number; total_primera_vez?: number; por_sede: Record<string, number>; por_origen: Record<string, number>; agendados: Agendado[] } | null>(null)
+  const [data, setData] = useState<{ total: number; metodo?: string; debug?: Record<string, unknown>; por_sede: Record<string, number>; por_origen: Record<string, number>; agendados: Agendado[] } | null>(null)
   const [loading, setLoading] = useState(true)
   const [sedeFilter, setSedeFilter] = useState('todas')
   const [busqueda, setBusqueda] = useState('')
@@ -692,9 +692,10 @@ function AgendadosTab() {
           <p className="text-xs text-text-muted mt-3">
             {agendados.length} turno{agendados.length !== 1 ? 's' : ''} dado{agendados.length !== 1 ? 's' : ''}
             {sedeFilter !== 'todas' ? ` en ${sedeFilter}` : ''} · Datos en tiempo real de Dentalink
-            {data.total_primera_vez != null && data.total_primera_vez > data.total && (
+            {data.metodo && (
               <span className="ml-2 text-text-muted">
-                ({data.total_primera_vez} primera vez, {data.total} con alta en este día)
+                · método: {data.metodo}
+                {data.debug && ` · ${JSON.stringify(data.debug)}`}
               </span>
             )}
           </p>

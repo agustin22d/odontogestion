@@ -27,19 +27,12 @@ interface DentalinkCitaFull {
   fecha_actualizacion: string
 }
 
-function esPrimeraVez(comentario: string): boolean {
-  const c = (comentario || '').toLowerCase()
-  return (
-    c.includes('primera vez') ||
-    c.includes('1ra vez') ||
-    c.includes('1° vez') ||
-    c.includes('1era vez') ||
-    c.includes('primer vez') ||
-    c.includes('primera consulta') ||
-    c.includes('paciente nuevo') ||
-    c.includes('pac nuevo') ||
-    c.includes('pac nueva')
-  )
+interface DentalinkPaciente {
+  id: number
+  nombre: string
+  apellido: string
+  fecha_afiliacion: string
+  [key: string]: unknown
 }
 
 function detectarOrigen(comentario: string): string {
@@ -50,6 +43,11 @@ function detectarOrigen(comentario: string): string {
   if (c.includes('tel') || c.includes('llamad') || c.includes('llamó') || c.includes('llamo')) return 'Teléfono'
   if (c.includes('referi') || c.includes('conocido') || c.includes('recomend')) return 'Referido'
   return 'Otro'
+}
+
+function extraerFecha(valor: unknown): string {
+  if (!valor || typeof valor !== 'string') return ''
+  return valor.split(' ')[0].split('T')[0]
 }
 
 async function fetchPaciente(idPaciente: number): Promise<Record<string, unknown> | null> {
@@ -66,14 +64,6 @@ async function fetchPaciente(idPaciente: number): Promise<Record<string, unknown
   } catch {
     return null
   }
-}
-
-function getFechaAltaPaciente(paciente: Record<string, unknown>): string {
-  const valor = paciente['fecha_afiliacion']
-  if (valor && typeof valor === 'string') {
-    return valor.split(' ')[0].split('T')[0]
-  }
-  return ''
 }
 
 export async function GET(request: Request) {
@@ -100,34 +90,15 @@ export async function GET(request: Request) {
   }
 
   try {
-    // "Turnos dados" = pacientes REGISTRADOS en fecha X, sin importar
-    // cuándo es su turno. La clave es fecha_afiliacion del paciente.
+    // "Turnos dados" = pacientes REGISTRADOS en la fecha seleccionada
+    // (fecha_afiliacion = fecha), independientemente de cuándo es su turno.
     //
-    // Problema: Dentalink /pacientes no soporta filtro por fecha_afiliacion.
-    // Solución: buscar citas con fecha_actualizacion en una ventana amplia
-    // (fecha → fecha+14d), filtrar "primera vez", y verificar individualmente
-    // que fecha_afiliacion del paciente == fecha seleccionada.
+    // Estrategia con fallback:
+    // 1) Intentar /pacientes con fecha_actualizacion (la mayoría de endpoints lo soportan)
+    //    y filtrar por fecha_afiliacion del response (sin lookups individuales)
+    // 2) Si falla, usar /citas con ventana amplia + lookups individuales de pacientes
 
-    // Ventana de búsqueda: desde la fecha seleccionada hasta +14 días o hoy
-    const windowEnd = new Date(fecha + 'T12:00:00')
-    windowEnd.setDate(windowEnd.getDate() + 14)
-    const today = getArgentinaToday()
-    const endStr = windowEnd.toISOString().split('T')[0]
-    const effectiveEnd = endStr > today ? today : endStr
-
-    const citas = await fetchPaginado<DentalinkCitaFull>('/citas', {
-      fecha_actualizacion: [
-        { gte: `${fecha} 00:00:00` },
-        { lte: `${effectiveEnd} 23:59:59` },
-      ],
-    })
-
-    // Filtrar "primera vez" por comentario
-    const citasPrimeraVez = citas.filter(c => esPrimeraVez(c.comentarios))
-
-    // Deduplicar por paciente y verificar fecha_afiliacion
-    const pacientesVistos = new Set<number>()
-    const agendados: Array<{
+    let agendados: Array<{
       id: number
       paciente: string
       fecha_turno: string
@@ -140,33 +111,127 @@ export async function GET(request: Request) {
       origen: string
       fecha_alta: string
     }> = []
+    let metodo = ''
+    let debugInfo: Record<string, unknown> = {}
 
-    for (const cita of citasPrimeraVez) {
-      if (pacientesVistos.has(cita.id_paciente)) continue
-      pacientesVistos.add(cita.id_paciente)
-
-      // Verificar que el paciente fue creado en la fecha seleccionada
-      const paciente = await fetchPaciente(cita.id_paciente)
-      const fechaAlta = paciente ? getFechaAltaPaciente(paciente) : ''
-
-      if (fechaAlta !== fecha) continue
-
-      agendados.push({
-        id: cita.id,
-        paciente: cita.nombre_paciente?.trim() || 'Sin nombre',
-        fecha_turno: cita.fecha,
-        hora: cita.hora_inicio?.slice(0, 5) || '',
-        profesional: cita.nombre_dentista || '',
-        sede: cita.nombre_sucursal || '',
-        id_sucursal: cita.id_sucursal,
-        estado: cita.estado_cita || '',
-        comentario: cita.comentarios || '',
-        origen: detectarOrigen(cita.comentarios),
-        fecha_alta: fechaAlta,
+    try {
+      // Estrategia 1: Consultar pacientes directamente
+      // fecha_actualizacion ≈ fecha_afiliacion para pacientes nuevos
+      // (los perfiles de pacientes rara vez se actualizan después de la creación)
+      const pacientes = await fetchPaginado<DentalinkPaciente>('/pacientes', {
+        fecha_actualizacion: [
+          { gte: `${fecha} 00:00:00` },
+          { lte: `${fecha} 23:59:59` },
+        ],
       })
 
-      // Rate limiting
-      await new Promise(r => setTimeout(r, 150))
+      // Filtrar por fecha_afiliacion = fecha seleccionada
+      const nuevos = pacientes.filter(p => {
+        const fa = extraerFecha(p.fecha_afiliacion)
+        return fa === fecha
+      })
+
+      metodo = 'pacientes_directo'
+      debugInfo = {
+        total_pacientes_actualizados: pacientes.length,
+        total_con_afiliacion_match: nuevos.length,
+      }
+
+      // Para cada paciente nuevo, obtener su primera cita
+      for (const pac of nuevos) {
+        const citas = await fetchPaginado<DentalinkCitaFull>('/citas', {
+          id_paciente: pac.id,
+        })
+
+        const primera = citas.sort((a, b) => {
+          return `${a.fecha} ${a.hora_inicio}`.localeCompare(`${b.fecha} ${b.hora_inicio}`)
+        })[0]
+
+        const nombre = primera
+          ? primera.nombre_paciente?.trim()
+          : [pac.nombre, pac.apellido].filter(Boolean).join(' ').trim()
+
+        agendados.push({
+          id: primera?.id || pac.id,
+          paciente: nombre || 'Sin nombre',
+          fecha_turno: primera?.fecha || '',
+          hora: primera?.hora_inicio?.slice(0, 5) || '',
+          profesional: primera?.nombre_dentista || '',
+          sede: primera?.nombre_sucursal || '',
+          id_sucursal: primera?.id_sucursal || 0,
+          estado: primera?.estado_cita || '',
+          comentario: primera?.comentarios || '',
+          origen: detectarOrigen(primera?.comentarios || ''),
+          fecha_alta: fecha,
+        })
+
+        await new Promise(r => setTimeout(r, 150))
+      }
+    } catch (pacError) {
+      // Estrategia 2: Fallback con citas
+      console.log('Pacientes endpoint falló, usando fallback de citas:', pacError)
+
+      // Ventana: fecha seleccionada hasta +7 días o hoy
+      const windowEnd = new Date(fecha + 'T12:00:00')
+      windowEnd.setDate(windowEnd.getDate() + 7)
+      const today = getArgentinaToday()
+      const endStr = windowEnd.toISOString().split('T')[0]
+      const effectiveEnd = endStr > today ? today : endStr
+
+      const citas = await fetchPaginado<DentalinkCitaFull>('/citas', {
+        fecha_actualizacion: [
+          { gte: `${fecha} 00:00:00` },
+          { lte: `${effectiveEnd} 23:59:59` },
+        ],
+      })
+
+      // Deduplicar por paciente, verificar fecha_afiliacion
+      const pacientesVistos = new Set<number>()
+      const sampleDates: Record<string, number> = {}
+      let lookupsFailed = 0
+
+      for (const cita of citas) {
+        if (pacientesVistos.has(cita.id_paciente)) continue
+        pacientesVistos.add(cita.id_paciente)
+
+        const paciente = await fetchPaciente(cita.id_paciente)
+        if (!paciente) {
+          lookupsFailed++
+          continue
+        }
+
+        const fechaAlta = extraerFecha(paciente['fecha_afiliacion'])
+
+        // Track distribution for debug
+        sampleDates[fechaAlta || 'null'] = (sampleDates[fechaAlta || 'null'] || 0) + 1
+
+        if (fechaAlta !== fecha) continue
+
+        agendados.push({
+          id: cita.id,
+          paciente: cita.nombre_paciente?.trim() || 'Sin nombre',
+          fecha_turno: cita.fecha,
+          hora: cita.hora_inicio?.slice(0, 5) || '',
+          profesional: cita.nombre_dentista || '',
+          sede: cita.nombre_sucursal || '',
+          id_sucursal: cita.id_sucursal,
+          estado: cita.estado_cita || '',
+          comentario: cita.comentarios || '',
+          origen: detectarOrigen(cita.comentarios),
+          fecha_alta: fechaAlta,
+        })
+
+        await new Promise(r => setTimeout(r, 100))
+      }
+
+      metodo = 'citas_fallback'
+      debugInfo = {
+        ventana: `${fecha} → ${effectiveEnd}`,
+        total_citas: citas.length,
+        pacientes_unicos: pacientesVistos.size,
+        lookups_failed: lookupsFailed,
+        distribucion_fechas_alta: sampleDates,
+      }
     }
 
     // Resumen
@@ -180,8 +245,8 @@ export async function GET(request: Request) {
     return NextResponse.json({
       fecha,
       total: agendados.length,
-      total_citas_ventana: citas.length,
-      total_primera_vez: citasPrimeraVez.length,
+      metodo,
+      debug: debugInfo,
       por_sede: porSede,
       por_origen: porOrigen,
       agendados,
