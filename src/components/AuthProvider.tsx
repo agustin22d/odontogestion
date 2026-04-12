@@ -20,10 +20,47 @@ export function useAuth() {
   return useContext(AuthContext)
 }
 
+const SYNC_COOLDOWN_MS = 30 * 60 * 1000 // 30 minutes
+
+function shouldAutoSync(): boolean {
+  if (typeof window === 'undefined') return false
+  const last = localStorage.getItem('last_auto_sync')
+  if (!last) return true
+  return Date.now() - parseInt(last, 10) > SYNC_COOLDOWN_MS
+}
+
+function markSynced() {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('last_auto_sync', Date.now().toString())
+  }
+}
+
+function triggerSync() {
+  markSynced()
+  fetch('/api/sync-dentalink', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dias: 7 }),
+  }).catch(() => {})
+  fetch('/api/sync-pagos', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dias: 7 }),
+  }).catch(() => {})
+}
+
 export function AuthProvider({ children, initialUser }: { children: React.ReactNode; initialUser: User | null }) {
   const [user, setUser] = useState<User | null>(initialUser)
   const [loading, setLoading] = useState(false)
   const supabase = createClient()
+
+  // Auto-sync on page load for admin (with 30min cooldown)
+  useEffect(() => {
+    if (initialUser?.rol === 'admin' && shouldAutoSync()) {
+      triggerSync()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: string) => {
@@ -45,18 +82,9 @@ export function AuthProvider({ children, initialUser }: { children: React.ReactN
             return
           }
 
-          // Auto-sync Dentalink al iniciar sesión (admin only, solo en SIGNED_IN)
-          if (event === 'SIGNED_IN' && profile?.rol === 'admin') {
-            fetch('/api/sync-dentalink', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ dias: 7 }),
-            }).catch(() => {})
-            fetch('/api/sync-pagos', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ dias: 7 }),
-            }).catch(() => {})
+          // Auto-sync on login (admin only)
+          if (event === 'SIGNED_IN' && profile?.rol === 'admin' && shouldAutoSync()) {
+            triggerSync()
           }
         }
       }

@@ -667,8 +667,9 @@ function AgendadosTab() {
                         <tr key={a.id} className="border-b border-border-light hover:bg-beige/30 transition-colors">
                           <td className="px-4 py-3 font-medium text-text-primary">{a.paciente}</td>
                           <td className="px-4 py-3 text-text-secondary whitespace-nowrap">
-                            {new Date(a.fecha_turno + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })}
-                            {a.hora ? ` ${a.hora}` : ''}
+                            {a.fecha_turno
+                              ? `${new Date(a.fecha_turno + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })}${a.hora ? ` ${a.hora}` : ''}`
+                              : '—'}
                           </td>
                           <td className="px-4 py-3 text-text-secondary hidden md:table-cell">{a.profesional || '—'}</td>
                           <td className="px-4 py-3 text-text-secondary hidden sm:table-cell">{a.sede}</td>
@@ -691,7 +692,7 @@ function AgendadosTab() {
 
           <p className="text-xs text-text-muted mt-3">
             {agendados.length} turno{agendados.length !== 1 ? 's' : ''} dado{agendados.length !== 1 ? 's' : ''}
-            {sedeFilter !== 'todas' ? ` en ${sedeFilter}` : ''} · Datos en tiempo real de Dentalink
+            {sedeFilter !== 'todas' ? ` en ${sedeFilter}` : ''}
           </p>
         </>
       )}
