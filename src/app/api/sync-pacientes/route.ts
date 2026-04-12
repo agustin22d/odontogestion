@@ -4,6 +4,9 @@ import { createClient as createServerClient } from '@/lib/supabase/server'
 import { fetchPaginado } from '@/lib/dentalink'
 import type { DentalinkCita } from '@/lib/dentalink'
 
+// Max execution time (Vercel)
+export const maxDuration = 60
+
 const API_BASE = process.env.DENTALINK_API_BASE || 'https://api.dentalink.healthatom.com/api/v1'
 const API_TOKEN = process.env.DENTALINK_API_TOKEN || ''
 
@@ -166,9 +169,9 @@ export async function POST(request: Request) {
           else totalLookupsFailed++
         }
 
-        // Wait 1s between batches
+        // Wait 500ms between batches
         if (i + 5 < newPatientIds.length) {
-          await new Promise(r => setTimeout(r, 1000))
+          await new Promise(r => setTimeout(r, 500))
         }
       }
 
@@ -207,8 +210,8 @@ export async function POST(request: Request) {
         }
       }
 
-      // Pause 3s between months to avoid rate limiting
-      await new Promise(r => setTimeout(r, 3000))
+      // Pause 2s between months
+      await new Promise(r => setTimeout(r, 2000))
     }
 
     return NextResponse.json({
