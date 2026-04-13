@@ -36,27 +36,9 @@ interface DentalinkTratamiento {
   bloqueado: boolean
 }
 
-interface DentalinkDescuento {
-  id: number
-  cuotas: number
-  total: number
-}
-
-interface DentalinkCuota {
-  id: number
-  numero_cuota: number
-  fecha_vencimiento: string
-  total: number
-  pagado: number
-  por_pagar: number
-}
-
 /**
  * Sync "Por Cobrar" desde Dentalink.
- * 1. Trae todos los tratamientos activos con deuda > 0
- * 2. Para cada uno, busca si tiene plan de cuotas (descuentos)
- * 3. Si tiene cuotas, guarda cada cuota pendiente con su fecha_vencimiento
- * 4. Si no tiene cuotas, guarda la deuda general del tratamiento
+ * Trae todos los tratamientos activos con deuda > 0 y los guarda.
  */
 export async function POST(request: Request) {
   const supabase = await createServerClient()
@@ -78,7 +60,7 @@ export async function POST(request: Request) {
   try {
     const admin = getSupabaseAdmin()
 
-    // 1. Fetch all active treatments
+    // Fetch all active treatments (one paginated call — fast)
     const tratamientos = await fetchPaginado<DentalinkTratamiento>('/tratamientos', {
       finalizado: { eq: '0' },
     })
@@ -88,92 +70,24 @@ export async function POST(request: Request) {
       t => t.deuda > 0 && !t.bloqueado && SUCURSAL_MAP[t.id_sucursal]
     )
 
-    // 2. For each treatment, try to fetch cuotas
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rows: any[] = []
-    let tratamientosConCuotas = 0
+    // Build rows — one per treatment
+    const rows = conDeuda.map(t => ({
+      id_tratamiento: t.id,
+      id_paciente: t.id_paciente,
+      nombre_paciente: t.nombre_paciente?.trim() || 'Sin nombre',
+      nombre_tratamiento: t.nombre,
+      id_sucursal: t.id_sucursal,
+      nombre_sucursal: t.nombre_sucursal,
+      sede_id: SUCURSAL_MAP[t.id_sucursal],
+      fecha_vencimiento: null,
+      monto: t.total,
+      pagado: t.abonado,
+      saldo: t.deuda,
+      numero_cuota: null,
+      total_cuotas: null,
+    }))
 
-    for (let i = 0; i < conDeuda.length; i += 5) {
-      const batch = conDeuda.slice(i, i + 5)
-
-      const descResults = await Promise.all(
-        batch.map(async (t) => {
-          try {
-            const descs = await fetchPaginado<DentalinkDescuento>(
-              `/tratamientos/${t.id}/descuentos`
-            )
-            return { tratamiento: t, descuentos: descs }
-          } catch {
-            return { tratamiento: t, descuentos: [] as DentalinkDescuento[] }
-          }
-        })
-      )
-
-      // Process each treatment's descuentos
-      for (const { tratamiento: t, descuentos } of descResults) {
-        let tieneCuotas = false
-
-        for (const desc of descuentos) {
-          if (desc.cuotas > 0) {
-            try {
-              const cuotas = await fetchPaginado<DentalinkCuota>(
-                `/tratamientos/${t.id}/descuentos/${desc.id}/cuotas`
-              )
-              const pendientes = cuotas.filter(c => c.por_pagar > 0)
-              if (pendientes.length > 0) {
-                tieneCuotas = true
-                tratamientosConCuotas++
-                for (const c of pendientes) {
-                  rows.push({
-                    id_tratamiento: t.id,
-                    id_paciente: t.id_paciente,
-                    nombre_paciente: t.nombre_paciente?.trim() || 'Sin nombre',
-                    nombre_tratamiento: t.nombre,
-                    id_sucursal: t.id_sucursal,
-                    nombre_sucursal: t.nombre_sucursal,
-                    sede_id: SUCURSAL_MAP[t.id_sucursal],
-                    fecha_vencimiento: c.fecha_vencimiento || null,
-                    monto: c.total,
-                    pagado: c.pagado,
-                    saldo: c.por_pagar,
-                    numero_cuota: c.numero_cuota,
-                    total_cuotas: desc.cuotas,
-                  })
-                }
-              }
-            } catch {
-              // Skip this descuento
-            }
-          }
-        }
-
-        // If no cuotas found, add treatment-level deuda
-        if (!tieneCuotas) {
-          rows.push({
-            id_tratamiento: t.id,
-            id_paciente: t.id_paciente,
-            nombre_paciente: t.nombre_paciente?.trim() || 'Sin nombre',
-            nombre_tratamiento: t.nombre,
-            id_sucursal: t.id_sucursal,
-            nombre_sucursal: t.nombre_sucursal,
-            sede_id: SUCURSAL_MAP[t.id_sucursal],
-            fecha_vencimiento: null,
-            monto: t.deuda,
-            pagado: 0,
-            saldo: t.deuda,
-            numero_cuota: null,
-            total_cuotas: null,
-          })
-        }
-      }
-
-      // Rate limiting between batches
-      if (i + 5 < conDeuda.length) {
-        await new Promise(r => setTimeout(r, 500))
-      }
-    }
-
-    // 3. Replace all existing data
+    // Replace all existing data
     await admin.from('por_cobrar').delete().gte('id', '00000000-0000-0000-0000-000000000000')
 
     let inserted = 0
@@ -188,7 +102,6 @@ export async function POST(request: Request) {
       ok: true,
       tratamientos_activos: tratamientos.length,
       con_deuda: conDeuda.length,
-      con_cuotas: tratamientosConCuotas,
       filas_guardadas: inserted,
     })
   } catch (error) {
