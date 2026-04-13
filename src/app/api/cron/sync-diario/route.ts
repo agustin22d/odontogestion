@@ -40,6 +40,38 @@ function extraerFecha(valor: unknown): string {
 
 const API_BASE = process.env.DENTALINK_API_BASE || 'https://api.dentalink.healthatom.com/api/v1'
 const API_TOKEN = process.env.DENTALINK_API_TOKEN || ''
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || ''
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || ''
+
+async function sendTelegram(text: string) {
+  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return
+  try {
+    await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: TELEGRAM_CHAT_ID,
+        text,
+        parse_mode: 'Markdown',
+      }),
+    })
+  } catch (e) {
+    console.error('Telegram error:', e)
+  }
+}
+
+const SEDE_NAMES: Record<string, string> = {
+  '9c098df1-b762-4a0f-a5a9-e31f2db2f0e6': 'Saavedra',
+  '8435b094-2f26-42da-b8e7-12f8e2c19f17': 'Caballito',
+  '30c30867-36c8-4432-af5a-0358fe7a64b9': 'Moreno',
+  '14497356-63c4-4aad-90c6-fbc1a18d67e4': 'R.Mejía',
+  '93f30e64-4857-446d-afc1-6b55c48d4727': 'Banfield',
+  '9cb6e65f-5e6a-466e-9a33-eb5f0d1a6dce': 'San Isidro',
+}
+
+function fmtMonto(n: number): string {
+  return '$' + Math.round(n).toLocaleString('es-AR')
+}
 
 /**
  * Cron job: sync diario completo.
@@ -248,6 +280,140 @@ export async function GET(request: Request) {
       }
     } catch (porCobrarError) {
       console.error('Error sync por cobrar:', porCobrarError)
+    }
+
+    // ── 5. Resumen diario por Telegram ─────────────────────
+    try {
+      const manana = new Date(hoy)
+      manana.setDate(hoy.getDate() + 1)
+      const fechaManana = manana.toISOString().split('T')[0]
+
+      // Cobranzas hoy
+      const { data: cobranzasHoy } = await supabase
+        .from('cobranzas')
+        .select('monto')
+        .eq('fecha', fechaHoy)
+      const totalCobrado = (cobranzasHoy || []).reduce((s, c) => s + (Number(c.monto) || 0), 0)
+
+      // Gastos pagados hoy
+      const { data: gastosHoy } = await supabase
+        .from('gastos')
+        .select('monto')
+        .eq('estado', 'pagado')
+        .eq('fecha', fechaHoy)
+      const totalGastos = (gastosHoy || []).reduce((s, g) => s + (Number(g.monto) || 0), 0)
+
+      const resultado = totalCobrado - totalGastos
+
+      // No-shows hoy
+      const { count: noShowsCount } = await supabase
+        .from('turnos')
+        .select('id', { count: 'exact', head: true })
+        .eq('fecha', fechaHoy)
+        .eq('estado', 'no_asistio')
+
+      // Turnos dados hoy (pacientes nuevos)
+      const { count: turnosDadosCount } = await supabase
+        .from('pacientes_nuevos')
+        .select('id', { count: 'exact', head: true })
+        .eq('fecha_afiliacion', fechaHoy)
+
+      // Gastos por vencer mañana
+      const { data: vencenManana } = await supabase
+        .from('gastos')
+        .select('concepto, monto')
+        .eq('estado', 'pendiente')
+        .eq('fecha_vencimiento', fechaManana)
+      const totalVencen = (vencenManana || []).reduce((s, g) => s + (Number(g.monto) || 0), 0)
+
+      // Turnos mañana por sede
+      const { data: turnosManana } = await supabase
+        .from('turnos')
+        .select('sede_id')
+        .eq('fecha', fechaManana)
+      const totalManana = turnosManana?.length || 0
+      const porSede: Record<string, number> = {}
+      turnosManana?.forEach(t => {
+        const nombre = SEDE_NAMES[t.sede_id] || 'Otra'
+        porSede[nombre] = (porSede[nombre] || 0) + 1
+      })
+
+      // Stock bajo
+      const { data: productos } = await supabase
+        .from('stock_productos')
+        .select('id, nombre, medida, stock_minimo')
+        .eq('activo', true)
+      const { data: movimientos } = await supabase
+        .from('stock_movimientos')
+        .select('producto_id, sede_id, tipo, cantidad')
+
+      interface StockItem { producto: string; sede: string; cantidad: number }
+      const stockBajo: StockItem[] = []
+      if (productos && movimientos) {
+        const { data: sedesData } = await supabase.from('sedes').select('id, nombre').eq('activa', true)
+        const sedesMap: Record<string, string> = {}
+        sedesData?.forEach(s => { sedesMap[s.id] = s.nombre })
+
+        for (const prod of productos) {
+          const sedeStock: Record<string, number> = {}
+          movimientos
+            .filter(m => m.producto_id === prod.id)
+            .forEach(m => {
+              if (!sedeStock[m.sede_id]) sedeStock[m.sede_id] = 0
+              sedeStock[m.sede_id] += m.tipo === 'entrada' ? m.cantidad : -m.cantidad
+            })
+          for (const [sedeId, cant] of Object.entries(sedeStock)) {
+            if (cant <= prod.stock_minimo) {
+              const label = prod.medida ? `${prod.nombre} ${prod.medida}` : prod.nombre
+              stockBajo.push({ producto: label, sede: sedesMap[sedeId] || 'Sede', cantidad: cant })
+            }
+          }
+        }
+      }
+
+      // Formatear fecha bonita
+      const diasSemana = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
+      const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
+      const fechaBonita = `${diasSemana[hoy.getDay()]} ${hoy.getDate()} ${meses[hoy.getMonth()]}`
+
+      // Armar mensaje
+      let msg = `📊 *Resumen diario — ${fechaBonita}*\n\n`
+      msg += `💰 Cobranzas hoy: ${fmtMonto(totalCobrado)}\n`
+      msg += `💸 Gastos hoy: ${fmtMonto(totalGastos)}\n`
+      msg += `📈 Resultado: ${resultado >= 0 ? '+' : ''}${fmtMonto(resultado)}\n\n`
+      msg += `❌ No asistieron hoy: ${noShowsCount || 0}\n\n`
+      msg += `📋 Turnos dados hoy: ${turnosDadosCount || 0}\n\n`
+
+      if (vencenManana && vencenManana.length > 0) {
+        msg += `⚠️ Vencen mañana: ${vencenManana.length} gasto${vencenManana.length > 1 ? 's' : ''} (${fmtMonto(totalVencen)})\n`
+        for (const g of vencenManana.slice(0, 5)) {
+          msg += `• ${g.concepto} — ${fmtMonto(Number(g.monto))}\n`
+        }
+        msg += '\n'
+      } else {
+        msg += `✅ Sin vencimientos mañana\n\n`
+      }
+
+      msg += `📅 Turnos mañana: ${totalManana}\n`
+      if (totalManana > 0) {
+        const sedeStr = Object.entries(porSede).map(([s, n]) => `${s} ${n}`).join(' | ')
+        msg += `${sedeStr}\n`
+      }
+      msg += '\n'
+
+      if (stockBajo.length > 0) {
+        msg += `📦 Stock bajo: ${stockBajo.length} producto${stockBajo.length > 1 ? 's' : ''}\n`
+        for (const s of stockBajo.slice(0, 8)) {
+          msg += `• ${s.producto} (${s.sede}) — ${s.cantidad} uds\n`
+        }
+        if (stockBajo.length > 8) msg += `• ...y ${stockBajo.length - 8} más\n`
+      } else {
+        msg += `📦 Stock: todo OK\n`
+      }
+
+      await sendTelegram(msg)
+    } catch (telegramError) {
+      console.error('Error building Telegram summary:', telegramError)
     }
 
     const result = {
