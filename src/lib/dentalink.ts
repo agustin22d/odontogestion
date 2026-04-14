@@ -88,7 +88,7 @@ export async function fetchPaginado<T>(endpoint: string, filtros?: Record<string
   return todos
 }
 
-export function mapEstadoDentalink(estado: string): 'agendado' | 'atendido' | 'no_asistio' | 'cancelado' {
+export function mapEstadoDentalink(estado: string): 'agendado' | 'atendido' | 'no_asistio' | 'cancelado' | 'reprogramado' {
   const s = (estado || '').toLowerCase().trim()
 
   if (s === 'atendido' || s === 'atendiéndose' || s === 'atendiendose') {
@@ -106,7 +106,10 @@ export function mapEstadoDentalink(estado: string): 'agendado' | 'atendido' | 'n
   ) {
     return 'cancelado'
   }
-  // No confirmado, Notificado, Cambio de fecha, etc → agendado
+  if (s === 'cambio de fecha') {
+    return 'reprogramado'
+  }
+  // No confirmado, Notificado, etc → agendado
   return 'agendado'
 }
 

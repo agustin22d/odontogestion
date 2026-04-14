@@ -7,7 +7,7 @@
 CREATE TYPE user_role AS ENUM ('admin', 'rolA', 'rolB', 'rolC');
 CREATE TYPE tipo_pago AS ENUM ('efectivo', 'transferencia', 'tarjeta_debito', 'tarjeta_credito');
 CREATE TYPE estado_deuda AS ENUM ('pendiente', 'parcial', 'pagado');
-CREATE TYPE estado_turno AS ENUM ('agendado', 'atendido', 'no_asistio', 'cancelado');
+CREATE TYPE estado_turno AS ENUM ('agendado', 'atendido', 'no_asistio', 'cancelado', 'reprogramado');
 CREATE TYPE origen_turno AS ENUM ('web', 'whatsapp', 'telefono', 'instagram');
 CREATE TYPE estado_hora AS ENUM ('pendiente', 'aprobada', 'pagada');
 CREATE TYPE tipo_gasto AS ENUM ('fijo', 'variable');

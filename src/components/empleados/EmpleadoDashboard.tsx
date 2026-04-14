@@ -26,6 +26,7 @@ const ESTADO_STYLES: Record<string, { bg: string; text: string; label: string }>
   atendido: { bg: 'bg-green-light', text: 'text-green-primary', label: 'Atendido' },
   no_asistio: { bg: 'bg-red-light', text: 'text-red', label: 'No asistió' },
   cancelado: { bg: 'bg-amber-light', text: 'text-amber', label: 'Cancelado' },
+  reprogramado: { bg: 'bg-purple-100', text: 'text-purple-600', label: 'Reprogramado' },
 }
 
 const ORIGEN_COLORS: Record<string, { bg: string; text: string }> = {

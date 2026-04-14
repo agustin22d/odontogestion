@@ -18,6 +18,7 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   BarChart3,
+  RefreshCw,
 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import type { Turno, Sede } from '@/types/database'
@@ -32,6 +33,7 @@ const ESTADO_STYLES: Record<string, { bg: string; text: string; label: string }>
   atendido: { bg: 'bg-green-light', text: 'text-green-primary', label: 'Atendido' },
   no_asistio: { bg: 'bg-red-light', text: 'text-red', label: 'No asistió' },
   cancelado: { bg: 'bg-amber-light', text: 'text-amber', label: 'Cancelado' },
+  reprogramado: { bg: 'bg-purple-100', text: 'text-purple-600', label: 'Reprogramado' },
 }
 
 export default function TurnosPage() {
@@ -362,6 +364,7 @@ function AgendaTab({ syncKey, showAnalytics }: { syncKey: number; showAnalytics?
   const atendidos = turnos.filter(t => t.estado === 'atendido').length
   const noShows = turnos.filter(t => t.estado === 'no_asistio').length
   const cancelados = turnos.filter(t => t.estado === 'cancelado').length
+  const reprogramados = turnos.filter(t => t.estado === 'reprogramado').length
   const agendados = turnos.filter(t => t.estado === 'agendado').length
   const efectivos = atendidos + noShows
   const tasaShow = efectivos > 0 ? Math.round((atendidos / efectivos) * 100) : 0
@@ -427,12 +430,13 @@ function AgendaTab({ syncKey, showAnalytics }: { syncKey: number; showAnalytics?
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
         <StatCard icon={<CalendarDays size={18} />} label="Total" value={total} color="text-text-primary" />
         <StatCard icon={<Clock size={18} />} label="Agendados" value={agendados} color="text-blue" />
         <StatCard icon={<CheckCircle2 size={18} />} label="Atendidos" value={atendidos} color="text-green-primary" />
         <StatCard icon={<XCircle size={18} />} label="No asistió" value={noShows} color="text-red" />
         <StatCard icon={<Ban size={18} />} label="Cancelados" value={cancelados} color="text-amber" />
+        <StatCard icon={<RefreshCw size={18} />} label="Reprogramados" value={reprogramados} color="text-purple-600" />
         <StatCard icon={<Users size={18} />} label="Tasa show" value={`${tasaShow}%`} color="text-green-primary" />
       </div>
 
