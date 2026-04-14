@@ -4,7 +4,6 @@ import { createClient as createServerClient } from '@/lib/supabase/server'
 import { fetchPaginado } from '@/lib/dentalink'
 import type { DentalinkCita } from '@/lib/dentalink'
 
-// Max execution time (Vercel)
 export const maxDuration = 60
 
 const API_BASE = process.env.DENTALINK_API_BASE || 'https://api.dentalink.healthatom.com/api/v1'
@@ -24,6 +23,7 @@ function detectarOrigen(comentario: string): string {
   if (c.includes('web') || c.includes('pag') || c.includes('página') || c.includes('pagina')) return 'Web'
   if (c.includes('tel') || c.includes('llamad') || c.includes('llamó') || c.includes('llamo')) return 'Teléfono'
   if (c.includes('referi') || c.includes('conocido') || c.includes('recomend')) return 'Referido'
+  if (c.includes('fb') || c.includes('facebook')) return 'Facebook'
   return 'Otro'
 }
 
@@ -32,44 +32,92 @@ function extraerFecha(valor: unknown): string {
   return valor.split(' ')[0].split('T')[0]
 }
 
-/**
- * Genera rangos mensuales entre dos fechas.
- * Ej: 2026-01-01 → 2026-04-12 produce:
- *   [2026-01-01, 2026-01-31], [2026-02-01, 2026-02-28], [2026-03-01, 2026-03-31], [2026-04-01, 2026-04-12]
- */
-function generarRangosMensuales(desde: string, hasta: string): Array<{ desde: string; hasta: string }> {
-  const rangos: Array<{ desde: string; hasta: string }> = []
-  const fechaFin = new Date(hasta + 'T12:00:00Z')
-  let cursor = new Date(desde + 'T12:00:00Z')
-
-  while (cursor <= fechaFin) {
-    const mesInicio = cursor.toISOString().split('T')[0]
-    // Fin del mes o fecha final, lo que sea menor
-    const finMes = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0)
-    const mesFin = finMes <= fechaFin
-      ? finMes.toISOString().split('T')[0]
-      : hasta
-
-    rangos.push({ desde: mesInicio, hasta: mesFin })
-
-    // Avanzar al primer día del siguiente mes
-    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1, 12, 0, 0)
-  }
-
-  return rangos
+interface DentalinkPaciente {
+  id: number
+  nombre: string
+  apellido: string
+  fecha_afiliacion: string
+  [key: string]: unknown
 }
 
 /**
- * Endpoint de backfill: sincroniza pacientes nuevos para un rango de fechas.
- * Procesa mes a mes para evitar rate limiting de Dentalink.
- * Diseñado para ejecutarse múltiples veces (idempotente — ignora duplicados).
- *
+ * Sync pacientes por fecha_afiliacion para UN día específico.
+ * Busca pacientes en Dentalink cuya fecha_afiliacion = fecha,
+ * luego busca su primera cita para obtener sede/profesional/comentario.
+ */
+export async function syncPacientesDia(fecha: string): Promise<number> {
+  const supabase = getSupabaseAdmin()
+
+  // 1. Buscar pacientes con fecha_afiliacion = fecha
+  const pacientes = await fetchPaginado<DentalinkPaciente>('/pacientes', {
+    fecha_afiliacion: [{ gte: fecha }, { lte: fecha }],
+  })
+
+  // Double-check fecha
+  const pacientesDia = pacientes.filter(p => extraerFecha(p.fecha_afiliacion) === fecha)
+  if (pacientesDia.length === 0) return 0
+
+  // 2. Borrar registros existentes para este día (replace completo)
+  await supabase
+    .from('pacientes_nuevos')
+    .delete()
+    .eq('fecha_afiliacion', fecha)
+
+  // 3. Buscar citas para obtener detalles (sede, profesional, comentario)
+  let citas: DentalinkCita[] = []
+  try {
+    const hasta = new Date(fecha + 'T12:00:00')
+    hasta.setDate(hasta.getDate() + 90)
+    const fechaHasta = hasta.toISOString().split('T')[0]
+    citas = await fetchPaginado<DentalinkCita>('/citas', {
+      fecha: [{ gte: fecha }, { lte: fechaHasta }],
+    })
+  } catch {
+    // Si falla, insertar sin detalles de cita
+  }
+
+  // 4. Armar registros
+  const rows = pacientesDia.map(p => {
+    const nombre = [p.nombre, p.apellido].filter(Boolean).join(' ').trim() || 'Sin nombre'
+    const primeraCita = citas
+      .filter(c => c.id_paciente === p.id)
+      .sort((a, b) => `${a.fecha} ${a.hora_inicio}`.localeCompare(`${b.fecha} ${b.hora_inicio}`))[0]
+
+    return {
+      id_dentalink: p.id,
+      nombre: primeraCita?.nombre_paciente?.trim() || nombre,
+      fecha_afiliacion: fecha,
+      primera_cita_fecha: primeraCita?.fecha || null,
+      primera_cita_hora: primeraCita?.hora_inicio?.slice(0, 5) || null,
+      primera_cita_profesional: primeraCita?.nombre_dentista || null,
+      primera_cita_sede: primeraCita?.nombre_sucursal || null,
+      primera_cita_id_sucursal: primeraCita?.id_sucursal || null,
+      primera_cita_comentario: primeraCita?.comentarios || null,
+      origen: detectarOrigen(primeraCita?.comentarios || ''),
+    }
+  })
+
+  // 5. Insertar
+  let inserted = 0
+  for (let i = 0; i < rows.length; i += 200) {
+    const batch = rows.slice(i, i + 200)
+    const { error } = await supabase.from('pacientes_nuevos').upsert(batch, { onConflict: 'id_dentalink' })
+    if (error) console.error('Insert error:', error.message)
+    else inserted += batch.length
+  }
+
+  return inserted
+}
+
+/**
  * POST /api/sync-pacientes
- * Body: { desde: "2026-01-01", hasta: "2026-04-12" }
+ * Body: { desde: "2026-04-01", hasta: "2026-04-14" }
+ *
+ * Backfill: sincroniza pacientes día por día usando fecha_afiliacion.
+ * Primero limpia la tabla, luego recarga desde Dentalink.
  */
 export async function POST(request: Request) {
   try {
-    // Auth: solo admin
     const supabaseAuth = await createServerClient()
     const { data: { user: authUser } } = await supabaseAuth.auth.getUser()
     if (!authUser) {
@@ -85,143 +133,48 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json().catch(() => ({}))
-    const desde = body.desde || '2026-01-01'
-    const hasta = body.hasta || new Date().toISOString().split('T')[0]
+    const desde = body.desde || '2026-04-01'
+    const hasta = body.hasta || new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
+    const limpiar = body.limpiar !== false // default: true
 
     const supabase = getSupabaseAdmin()
-    const rangos = generarRangosMensuales(desde, hasta)
 
-    let totalCitas = 0
-    let totalInsertados = 0
-    let totalYaExistentes = 0
-    let totalLookupsFailed = 0
+    // Limpiar tabla completa si se pide
+    if (limpiar) {
+      await supabase.from('pacientes_nuevos').delete().gte('fecha_afiliacion', desde).lte('fecha_afiliacion', hasta)
+      console.log(`Limpiados registros de ${desde} a ${hasta}`)
+    }
 
-    for (const rango of rangos) {
-      console.log(`Sync pacientes: procesando ${rango.desde} → ${rango.hasta}`)
+    // Procesar día por día
+    let totalInserted = 0
+    const cursor = new Date(desde + 'T12:00:00')
+    const end = new Date(hasta + 'T12:00:00')
+    const resultados: Array<{ fecha: string; count: number }> = []
 
-      // 1. Fetch citas del mes
-      const citas = await fetchPaginado<DentalinkCita>('/citas', {
-        fecha: [{ gte: rango.desde }, { lte: rango.hasta }],
-      })
-      totalCitas += citas.length
-
-      if (!citas.length) continue
-
-      // 2. Get unique patient IDs
-      const allPatientIds = [...new Set(citas.map(c => c.id_paciente))]
-
-      // 3. Check which we already have
-      const existingIds = new Set<number>()
-      for (let i = 0; i < allPatientIds.length; i += 500) {
-        const batch = allPatientIds.slice(i, i + 500)
-        const { data: existing } = await supabase
-          .from('pacientes_nuevos')
-          .select('id_dentalink')
-          .in('id_dentalink', batch)
-        if (existing) {
-          for (const e of existing) {
-            existingIds.add(e.id_dentalink as number)
-          }
-        }
-      }
-      totalYaExistentes += existingIds.size
-
-      const newPatientIds = allPatientIds.filter(id => !existingIds.has(id))
-      if (!newPatientIds.length) continue
-
-      // 4. Batch lookup patient details (5 parallel, 1s between batches to avoid 429)
-      const pacientesData = new Map<number, Record<string, unknown>>()
-
-      for (let i = 0; i < newPatientIds.length; i += 5) {
-        const batch = newPatientIds.slice(i, i + 5)
-        const promises = batch.map(async (id) => {
-          try {
-            const res = await fetch(`${API_BASE}/pacientes/${id}`, {
-              headers: {
-                'Authorization': `Token ${API_TOKEN}`,
-                'Content-Type': 'application/json',
-              },
-            })
-            if (res.status === 429) {
-              // Wait and retry once
-              await new Promise(r => setTimeout(r, 3000))
-              const retry = await fetch(`${API_BASE}/pacientes/${id}`, {
-                headers: {
-                  'Authorization': `Token ${API_TOKEN}`,
-                  'Content-Type': 'application/json',
-                },
-              })
-              if (!retry.ok) return { id, data: null }
-              const json = await retry.json()
-              return { id, data: json.data || json }
-            }
-            if (!res.ok) return { id, data: null }
-            const json = await res.json()
-            return { id, data: json.data || json }
-          } catch {
-            return { id, data: null }
-          }
-        })
-
-        const results = await Promise.all(promises)
-        for (const r of results) {
-          if (r.data) pacientesData.set(r.id, r.data)
-          else totalLookupsFailed++
-        }
-
-        // Wait 500ms between batches
-        if (i + 5 < newPatientIds.length) {
-          await new Promise(r => setTimeout(r, 500))
-        }
+    while (cursor <= end) {
+      const fecha = cursor.toISOString().split('T')[0]
+      try {
+        const count = await syncPacientesDia(fecha)
+        totalInserted += count
+        resultados.push({ fecha, count })
+        console.log(`Sync pacientes ${fecha}: ${count}`)
+      } catch (err) {
+        console.error(`Error sync ${fecha}:`, err)
+        resultados.push({ fecha, count: -1 })
       }
 
-      // 5. Prepare and insert
-      const toInsert: Array<Record<string, unknown>> = []
+      cursor.setDate(cursor.getDate() + 1)
 
-      for (const [patientId, paciente] of pacientesData.entries()) {
-        const fechaAlta = extraerFecha(paciente['fecha_afiliacion'])
-        if (!fechaAlta) continue
-
-        const primeraCita = citas
-          .filter(c => c.id_paciente === patientId)
-          .sort((a, b) => `${a.fecha} ${a.hora_inicio}`.localeCompare(`${b.fecha} ${b.hora_inicio}`))[0]
-
-        toInsert.push({
-          id_dentalink: patientId,
-          nombre: primeraCita?.nombre_paciente?.trim() || 'Sin nombre',
-          fecha_afiliacion: fechaAlta,
-          primera_cita_fecha: primeraCita?.fecha || null,
-          primera_cita_hora: primeraCita?.hora_inicio?.slice(0, 5) || null,
-          primera_cita_profesional: primeraCita?.nombre_dentista || null,
-          primera_cita_sede: primeraCita?.nombre_sucursal || null,
-          primera_cita_id_sucursal: primeraCita?.id_sucursal || null,
-          primera_cita_comentario: primeraCita?.comentarios || null,
-          origen: detectarOrigen(primeraCita?.comentarios || ''),
-        })
-      }
-
-      for (let i = 0; i < toInsert.length; i += 200) {
-        const batch = toInsert.slice(i, i + 200)
-        const { error } = await supabase.from('pacientes_nuevos').insert(batch)
-        if (error) {
-          console.error('Insert error:', error.message)
-        } else {
-          totalInsertados += batch.length
-        }
-      }
-
-      // Pause 2s between months
-      await new Promise(r => setTimeout(r, 2000))
+      // Pausa entre días para no saturar API
+      await new Promise(r => setTimeout(r, 1000))
     }
 
     return NextResponse.json({
-      message: `${totalInsertados} pacientes nuevos sincronizados`,
-      rango: `${desde} → ${hasta}`,
-      meses_procesados: rangos.length,
-      total_citas: totalCitas,
-      ya_existentes: totalYaExistentes,
-      insertados: totalInsertados,
-      lookups_failed: totalLookupsFailed,
+      ok: true,
+      desde,
+      hasta,
+      total: totalInserted,
+      por_dia: resultados,
     })
   } catch (error) {
     console.error('Sync pacientes error:', error)
