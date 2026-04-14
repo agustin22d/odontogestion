@@ -100,7 +100,18 @@ export function AuthProvider({ children, initialUser }: { children: React.ReactN
   }, [])
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut()
+    try {
+      await supabase.auth.signOut()
+    } catch (err) {
+      console.error('Error signing out:', err)
+    }
+    // Force-clear all Supabase auth cookies so middleware doesn't redirect back
+    document.cookie.split(';').forEach(c => {
+      const name = c.trim().split('=')[0]
+      if (name.startsWith('sb-')) {
+        document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`
+      }
+    })
     window.location.href = '/login'
   }
 
