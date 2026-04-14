@@ -111,78 +111,87 @@ function TurnosAnalytics({ syncKey }: { syncKey: number }) {
   } | null>(null)
 
   const fetchStats = useCallback(async () => {
-    const hoy = getArgentinaToday()
-    const [year, month] = hoy.split('-').map(Number)
+    try {
+      const hoy = getArgentinaToday()
+      const [year, month] = hoy.split('-').map(Number)
 
-    // Current month range
-    const mesStart = `${year}-${String(month).padStart(2, '0')}-01`
-    const lastDay = new Date(year, month, 0).getDate()
-    const mesEnd = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+      // Current month range
+      const mesStart = `${year}-${String(month).padStart(2, '0')}-01`
+      const lastDay = new Date(year, month, 0).getDate()
+      const mesEnd = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
 
-    // Previous month range
-    const prevMonth = month === 1 ? 12 : month - 1
-    const prevYear = month === 1 ? year - 1 : year
-    const prevStart = `${prevYear}-${String(prevMonth).padStart(2, '0')}-01`
-    const prevLastDay = new Date(prevYear, prevMonth, 0).getDate()
-    const prevEnd = `${prevYear}-${String(prevMonth).padStart(2, '0')}-${String(prevLastDay).padStart(2, '0')}`
+      // Previous month range
+      const prevMonth = month === 1 ? 12 : month - 1
+      const prevYear = month === 1 ? year - 1 : year
+      const prevStart = `${prevYear}-${String(prevMonth).padStart(2, '0')}-01`
+      const prevLastDay = new Date(prevYear, prevMonth, 0).getDate()
+      const prevEnd = `${prevYear}-${String(prevMonth).padStart(2, '0')}-${String(prevLastDay).padStart(2, '0')}`
 
-    // Last 7 days
-    const dias7: string[] = []
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(hoy + 'T12:00:00')
-      d.setDate(d.getDate() - i)
-      dias7.push(d.toISOString().split('T')[0])
-    }
-    const semanaStart = dias7[0]
-    const semanaEnd = dias7[6]
-
-    const [resMes, resPrev, resSemana] = await Promise.all([
-      supabase.from('turnos').select('estado').gte('fecha', mesStart).lte('fecha', mesEnd),
-      supabase.from('turnos').select('estado').gte('fecha', prevStart).lte('fecha', prevEnd),
-      supabase.from('turnos').select('fecha, estado').gte('fecha', semanaStart).lte('fecha', semanaEnd),
-    ])
-
-    const turnosMes = (resMes.data || []) as unknown as { estado: string }[]
-    const turnosPrev = (resPrev.data || []) as unknown as { estado: string }[]
-    const turnosSemana = (resSemana.data || []) as unknown as { fecha: string; estado: string }[]
-
-    // Current month stats
-    const mesTotal = turnosMes.length
-    const mesAtendidos = turnosMes.filter(t => t.estado === 'atendido').length
-    const mesNoShows = turnosMes.filter(t => t.estado === 'no_asistio').length
-    const mesCancelados = turnosMes.filter(t => t.estado === 'cancelado').length
-    const mesEfectivos = mesAtendidos + mesNoShows
-    const mesTasaShow = mesEfectivos > 0 ? Math.round((mesAtendidos / mesEfectivos) * 100) : 0
-
-    // Days elapsed in month (up to today)
-    const diaHoy = parseInt(hoy.split('-')[2])
-    const promedioDiario = diaHoy > 0 ? Math.round(mesTotal / diaHoy) : 0
-
-    // Previous month stats
-    const prevTotal = turnosPrev.length
-    const prevAtendidos = turnosPrev.filter(t => t.estado === 'atendido').length
-    const prevNoShows = turnosPrev.filter(t => t.estado === 'no_asistio').length
-    const prevEfectivos = prevAtendidos + prevNoShows
-    const prevTasaShow = prevEfectivos > 0 ? Math.round((prevAtendidos / prevEfectivos) * 100) : 0
-
-    // Weekly chart data
-    const semana = dias7.map(dia => {
-      const turnosDia = turnosSemana.filter(t => t.fecha === dia)
-      const d = new Date(dia + 'T12:00:00')
-      return {
-        dia,
-        label: d.toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric' }).replace('.', ''),
-        total: turnosDia.length,
-        atendidos: turnosDia.filter(t => t.estado === 'atendido').length,
+      // Last 7 days
+      const dias7: string[] = []
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(hoy + 'T12:00:00')
+        d.setDate(d.getDate() - i)
+        dias7.push(d.toISOString().split('T')[0])
       }
-    })
+      const semanaStart = dias7[0]
+      const semanaEnd = dias7[6]
 
-    setStats({
-      mesActual: { total: mesTotal, atendidos: mesAtendidos, noShows: mesNoShows, cancelados: mesCancelados, tasaShow: mesTasaShow },
-      mesAnterior: { total: prevTotal, atendidos: prevAtendidos, tasaShow: prevTasaShow },
-      promedioDiario,
-      semana,
-    })
+      const [resMes, resPrev, resSemana] = await Promise.all([
+        supabase.from('turnos').select('estado').gte('fecha', mesStart).lte('fecha', mesEnd),
+        supabase.from('turnos').select('estado').gte('fecha', prevStart).lte('fecha', prevEnd),
+        supabase.from('turnos').select('fecha, estado').gte('fecha', semanaStart).lte('fecha', semanaEnd),
+      ])
+
+      // Check for query errors
+      if (resMes.error) console.error('Error fetching turnos mes:', resMes.error)
+      if (resPrev.error) console.error('Error fetching turnos prev:', resPrev.error)
+      if (resSemana.error) console.error('Error fetching turnos semana:', resSemana.error)
+
+      const turnosMes = (resMes.data || []) as unknown as { estado: string }[]
+      const turnosPrev = (resPrev.data || []) as unknown as { estado: string }[]
+      const turnosSemana = (resSemana.data || []) as unknown as { fecha: string; estado: string }[]
+
+      // Current month stats
+      const mesTotal = turnosMes.length
+      const mesAtendidos = turnosMes.filter(t => t.estado === 'atendido').length
+      const mesNoShows = turnosMes.filter(t => t.estado === 'no_asistio').length
+      const mesCancelados = turnosMes.filter(t => t.estado === 'cancelado').length
+      const mesEfectivos = mesAtendidos + mesNoShows
+      const mesTasaShow = mesEfectivos > 0 ? Math.round((mesAtendidos / mesEfectivos) * 100) : 0
+
+      // Days elapsed in month (up to today)
+      const diaHoy = parseInt(hoy.split('-')[2])
+      const promedioDiario = diaHoy > 0 ? Math.round(mesTotal / diaHoy) : 0
+
+      // Previous month stats
+      const prevTotal = turnosPrev.length
+      const prevAtendidos = turnosPrev.filter(t => t.estado === 'atendido').length
+      const prevNoShows = turnosPrev.filter(t => t.estado === 'no_asistio').length
+      const prevEfectivos = prevAtendidos + prevNoShows
+      const prevTasaShow = prevEfectivos > 0 ? Math.round((prevAtendidos / prevEfectivos) * 100) : 0
+
+      // Weekly chart data
+      const semana = dias7.map(dia => {
+        const turnosDia = turnosSemana.filter(t => t.fecha === dia)
+        const d = new Date(dia + 'T12:00:00')
+        return {
+          dia,
+          label: d.toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric' }).replace('.', ''),
+          total: turnosDia.length,
+          atendidos: turnosDia.filter(t => t.estado === 'atendido').length,
+        }
+      })
+
+      setStats({
+        mesActual: { total: mesTotal, atendidos: mesAtendidos, noShows: mesNoShows, cancelados: mesCancelados, tasaShow: mesTasaShow },
+        mesAnterior: { total: prevTotal, atendidos: prevAtendidos, tasaShow: prevTasaShow },
+        promedioDiario,
+        semana,
+      })
+    } catch (err) {
+      console.error('Error fetching turnos analytics:', err)
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [syncKey])
 
@@ -300,7 +309,8 @@ function AgendaTab({ syncKey, showAnalytics }: { syncKey: number; showAnalytics?
   const [busqueda, setBusqueda] = useState('')
 
   const fetchSedes = useCallback(async () => {
-    const { data } = await supabase.from('sedes').select('*').eq('activa', true).order('nombre')
+    const { data, error } = await supabase.from('sedes').select('*').eq('activa', true).order('nombre')
+    if (error) console.error('Error fetching sedes:', error)
     if (data) setSedes(data)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -318,7 +328,8 @@ function AgendaTab({ syncKey, showAnalytics }: { syncKey: number; showAnalytics?
         query = query.eq('sede_id', sedeFilter)
       }
 
-      const { data } = await query
+      const { data, error } = await query
+      if (error) console.error('Error fetching turnos:', error)
       setTurnos((data as TurnoConSede[]) || [])
     } catch (err) {
       console.error('Error fetching turnos:', err)

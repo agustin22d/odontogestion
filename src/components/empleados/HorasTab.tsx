@@ -139,21 +139,32 @@ export default function HorasTab({ isAdmin }: { isAdmin: boolean }) {
         .select('id, name, active, gestion_user_id')
         .eq('active', true)
         .order('name')
-      if (error) { console.error('Error fetching employees:', error); return }
+      if (error) { console.error('Error fetching employees:', error); setLoading(false); return }
       if (data) {
         const emps = data as unknown as HorasEmployee[]
         setEmployees(emps)
         if (emps.length > 0 && selectedEmployee === null) {
           if (!isAdmin && user?.id) {
             const myEmp = emps.find(e => e.gestion_user_id === user.id)
-            if (myEmp) setSelectedEmployee(myEmp.id)
+            if (myEmp) {
+              setSelectedEmployee(myEmp.id)
+            } else {
+              // No matching employee — stop loading so UI doesn't hang
+              setLoading(false)
+            }
           } else {
             setSelectedEmployee(emps[0].id)
           }
+        } else if (emps.length === 0) {
+          // No employees at all — stop loading
+          setLoading(false)
         }
+      } else {
+        setLoading(false)
       }
     } catch (err) {
       console.error('Error fetching employees:', err)
+      setLoading(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin, user?.id])
