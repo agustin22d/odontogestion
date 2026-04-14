@@ -8,12 +8,14 @@ interface AuthContextType {
   user: User | null
   loading: boolean
   signOut: () => Promise<void>
+  dataVersion: number // increments on session recovery — triggers data refetch in pages
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
   signOut: async () => {},
+  dataVersion: 0,
 })
 
 export function useAuth() {
@@ -57,6 +59,7 @@ function triggerSync() {
 export function AuthProvider({ children, initialUser }: { children: React.ReactNode; initialUser: User | null }) {
   const [user, setUser] = useState<User | null>(initialUser)
   const [loading, setLoading] = useState(false)
+  const [dataVersion, setDataVersion] = useState(0)
   const supabase = createClient()
 
   // Auto-sync on page load for admin (with 30min cooldown)
@@ -92,10 +95,42 @@ export function AuthProvider({ children, initialUser }: { children: React.ReactN
             triggerSync()
           }
         }
+
+        // Session was refreshed after expiry — tell pages to refetch data
+        if (event === 'TOKEN_REFRESHED') {
+          setDataVersion(v => v + 1)
+        }
       }
     })
 
     return () => subscription.unsubscribe()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Recover session when user returns to the tab after being away
+  // Browsers throttle timers in background tabs, so Supabase's auto-refresh
+  // may not fire. This forces a refresh as soon as the tab is visible again.
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        supabase.auth.getUser().then(({ error }: { error: any }) => {
+          if (error) {
+            // Session truly expired (refresh token invalid) — force re-login
+            console.error('Session expired, redirecting to login:', error.message)
+            document.cookie.split(';').forEach(c => {
+              const name = c.trim().split('=')[0]
+              if (name.startsWith('sb-')) {
+                document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`
+              }
+            })
+            window.location.href = '/login'
+          }
+        })
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -116,7 +151,7 @@ export function AuthProvider({ children, initialUser }: { children: React.ReactN
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, signOut: handleSignOut }}>
+    <AuthContext.Provider value={{ user, loading, signOut: handleSignOut, dataVersion }}>
       {children}
     </AuthContext.Provider>
   )

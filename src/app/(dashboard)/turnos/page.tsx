@@ -299,7 +299,7 @@ function TurnosAnalytics({ syncKey }: { syncKey: number }) {
 // Tab: Agenda del día (existente)
 // ============================================
 function AgendaTab({ syncKey, showAnalytics }: { syncKey: number; showAnalytics?: boolean }) {
-  const { user } = useAuth()
+  const { user, dataVersion } = useAuth()
   const supabase = createClient()
   const [turnos, setTurnos] = useState<TurnoConSede[]>([])
   const [sedes, setSedes] = useState<Sede[]>([])
@@ -337,7 +337,7 @@ function AgendaTab({ syncKey, showAnalytics }: { syncKey: number; showAnalytics?
       setLoading(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fecha, sedeFilter, user, syncKey])
+  }, [fecha, sedeFilter, user, syncKey, dataVersion])
 
   useEffect(() => { fetchSedes() }, [fetchSedes])
   useEffect(() => { fetchTurnos() }, [fetchTurnos])

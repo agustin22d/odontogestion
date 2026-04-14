@@ -95,7 +95,7 @@ type AdminView = 'resumen' | 'calendario'
 // --- Main Component ---
 
 export default function HorasTab({ isAdmin }: { isAdmin: boolean }) {
-  const { user } = useAuth()
+  const { user, dataVersion } = useAuth()
   const supabase = createClient()
   const [employees, setEmployees] = useState<HorasEmployee[]>([])
   const [entries, setEntries] = useState<HourEntry[]>([])
@@ -167,7 +167,7 @@ export default function HorasTab({ isAdmin }: { isAdmin: boolean }) {
       setLoading(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin, user?.id])
+  }, [isAdmin, user?.id, dataVersion])
 
   const fetchEntries = useCallback(async () => {
     setLoading(true)

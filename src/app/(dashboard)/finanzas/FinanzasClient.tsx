@@ -144,6 +144,7 @@ export default function FinanzasPage() {
 // RESUMEN TAB
 // ============================================
 function ResumenTab({ sedes }: { sedes: Sede[] }) {
+  const { dataVersion } = useAuth()
   const supabase = createClient()
   const [loading, setLoading] = useState(true)
   const [sedeFilter, setSedeFilter] = useState<string>('todas')
@@ -241,7 +242,7 @@ function ResumenTab({ sedes }: { sedes: Sede[] }) {
       setLoading(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hoy, mesActual, sedeFilter, sedes])
+  }, [hoy, mesActual, sedeFilter, sedes, dataVersion])
 
   useEffect(() => { fetchResumen() }, [fetchResumen])
 
@@ -418,7 +419,7 @@ function ResumenTab({ sedes }: { sedes: Sede[] }) {
 // COBRANZAS TAB (fully functional)
 // ============================================
 function CobranzasTab({ syncKey, sedes }: { syncKey: number; sedes: Sede[] }) {
-  const { user } = useAuth()
+  const { user, dataVersion } = useAuth()
   const supabase = createClient()
   const [cobranzas, setCobranzas] = useState<CobranzaConSede[]>([])
   const [loading, setLoading] = useState(true)
@@ -468,7 +469,7 @@ function CobranzasTab({ syncKey, sedes }: { syncKey: number; sedes: Sede[] }) {
       setLoading(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fecha, user, syncKey])
+  }, [fecha, user, syncKey, dataVersion])
 
   useEffect(() => { fetchCobranzas() }, [fetchCobranzas])
 
@@ -1004,6 +1005,7 @@ function CobranzasTab({ syncKey, sedes }: { syncKey: number; sedes: Sede[] }) {
 // POR COBRAR TAB
 // ============================================
 function PorCobrarTab({ syncKey, sedes }: { syncKey: number; sedes: Sede[] }) {
+  const { dataVersion } = useAuth()
   const supabase = createClient()
   const [loading, setLoading] = useState(true)
   const [sedeFilter, setSedeFilter] = useState<string>('todas')
@@ -1027,7 +1029,7 @@ function PorCobrarTab({ syncKey, sedes }: { syncKey: number; sedes: Sede[] }) {
       setLoading(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [syncKey])
+  }, [syncKey, dataVersion])
 
   useEffect(() => { fetchData() }, [fetchData])
 
@@ -1277,7 +1279,7 @@ interface GastoRow {
 }
 
 function GastosTab({ sedes }: { sedes: Sede[] }) {
-  const { user } = useAuth()
+  const { user, dataVersion } = useAuth()
   const supabase = createClient()
 
   const [gastos, setGastos] = useState<GastoRow[]>([])
@@ -1342,7 +1344,7 @@ function GastosTab({ sedes }: { sedes: Sede[] }) {
       setLoading(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mesFilter, catFilter, estadoFilter])
+  }, [mesFilter, catFilter, estadoFilter, dataVersion])
 
   useEffect(() => { fetchGastos() }, [fetchGastos])
 
