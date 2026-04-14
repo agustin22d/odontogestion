@@ -120,10 +120,10 @@ export function AuthProvider({ children, initialUser }: { children: React.ReactN
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // When the tab goes to background and comes back, stale connections and
-  // expired tokens can make the entire app unresponsive.
-  // Strategy: hard reload after extended absence (guaranteed clean state),
-  // quick refresh for shorter absences.
+  // When the tab goes to background and comes back, stale HTTP connections
+  // cause fetch() calls to hang forever. The SAFEST strategy:
+  // - Short absence: do NOTHING (existing data stays visible, no risk of hanging)
+  // - Long absence: hard reload (creates fresh connections, guaranteed clean state)
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
@@ -132,16 +132,12 @@ export function AuthProvider({ children, initialUser }: { children: React.ReactN
         const elapsed = Date.now() - hiddenAtRef.current
         hiddenAtRef.current = 0
 
-        if (elapsed > 60_000) {
-          // > 1 minute away: hard reload for clean state
-          // (stale connections, expired tokens, frozen JS — all fixed)
+        // > 2 minutes away: hard reload for guaranteed clean state
+        if (elapsed > 120_000) {
           window.location.reload()
-        } else if (elapsed > 5_000) {
-          // 5s-1min away: bump dataVersion to trigger refetches
-          // Supabase's internal auto-refresh handles the token
-          setDataVersion(v => v + 1)
         }
-        // < 5s: do nothing, everything should still be fine
+        // < 2 minutes: do nothing, existing data stays visible
+        // User can hit "Sync todo" or F5 if they want fresh data
       }
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)
