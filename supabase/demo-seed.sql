@@ -321,15 +321,15 @@ BEGIN
   -- =========================================
   INSERT INTO hour_entries (employee_id, date, hours)
   SELECT e.id,
-         d::DATE,
-         (4 + (extract(day from d)::int % 3))::DECIMAL(4,2)
+         gs.fecha::DATE,
+         (4 + (extract(day from gs.fecha)::int % 3))::DECIMAL(4,2)
   FROM employees e
   CROSS JOIN generate_series(
     CURRENT_DATE - INTERVAL '28 days',
     CURRENT_DATE,
     INTERVAL '7 days'
-  ) d
-  WHERE EXTRACT(DOW FROM d) = 0
+  ) AS gs(fecha)
+  WHERE EXTRACT(DOW FROM gs.fecha) = 0
   ON CONFLICT (employee_id, date) DO NOTHING;
 
   RETURN 'Demo data reset: ' || NOW()::TEXT;
