@@ -57,7 +57,7 @@ export default function CambiarClavePage() {
           <div className="inline-flex items-center gap-2 mb-3">
             <div className="w-3 h-3 rounded-full bg-green-primary" />
             <span className="text-xs font-medium tracking-[0.18em] uppercase text-text-primary">
-              BA Dental Studio
+              Odonto Gestión
             </span>
           </div>
           <h1 className="font-display text-2xl font-semibold text-text-primary">

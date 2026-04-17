@@ -95,7 +95,7 @@ export default function Sidebar() {
           {!collapsed && (
             <div className="flex items-center gap-1 min-w-0">
               <span className="text-[11px] font-medium tracking-[0.15em] uppercase text-text-primary truncate">
-                BA Dental
+                Odonto
               </span>
               <span className="text-text-muted text-[11px]">|</span>
               <span className="text-[10px] text-text-secondary truncate">Gestión</span>

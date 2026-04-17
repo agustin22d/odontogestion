@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/components/AuthProvider'
 import SyncButton from '@/components/SyncButton'
+import ImportExcelButton from '@/components/ImportExcelButton'
 import {
   DollarSign,
   RefreshCw,
@@ -89,20 +90,30 @@ export default function FinanzasPage() {
           <h1 className="font-display text-2xl font-semibold text-text-primary mb-1">Finanzas</h1>
           <p className="text-sm text-text-secondary hidden sm:block">Cobranzas, deudas pendientes y gastos</p>
         </div>
-        {activeTab === 'cobranzas' && (
-          <SyncButton
-            label="Sync Pagos"
-            endpoints={[{ url: '/api/sync-pagos', body: { dias: 7 } }]}
-            onDone={() => setSyncKey(k => k + 1)}
-          />
-        )}
-        {activeTab === 'por-cobrar' && (
-          <SyncButton
-            label="Sync Deudas"
-            endpoints={[{ url: '/api/sync-por-cobrar' }]}
-            onDone={() => setSyncKey(k => k + 1)}
-          />
-        )}
+        <div className="flex items-center gap-2">
+          {activeTab === 'cobranzas' && (
+            <>
+              <ImportExcelButton entity="cobranzas" onSuccess={() => setSyncKey(k => k + 1)} />
+              {process.env.NEXT_PUBLIC_DEMO_MODE !== 'true' && (
+                <SyncButton
+                  label="Sync Pagos"
+                  endpoints={[{ url: '/api/sync-pagos', body: { dias: 7 } }]}
+                  onDone={() => setSyncKey(k => k + 1)}
+                />
+              )}
+            </>
+          )}
+          {activeTab === 'gastos' && (
+            <ImportExcelButton entity="gastos" onSuccess={() => setSyncKey(k => k + 1)} />
+          )}
+          {activeTab === 'por-cobrar' && process.env.NEXT_PUBLIC_DEMO_MODE !== 'true' && (
+            <SyncButton
+              label="Sync Deudas"
+              endpoints={[{ url: '/api/sync-por-cobrar' }]}
+              onDone={() => setSyncKey(k => k + 1)}
+            />
+          )}
+        </div>
       </div>
 
       {/* Tabs */}

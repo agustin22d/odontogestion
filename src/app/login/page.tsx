@@ -17,7 +17,7 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
 
-    const email = username.includes('@') ? username : `${username.toLowerCase().trim()}@badentalstudio.com`
+    const email = username.includes('@') ? username : `${username.toLowerCase().trim()}@odontogestion.com`
 
     const { error: authError } = await supabase.auth.signInWithPassword({
       email,
@@ -57,7 +57,7 @@ export default function LoginPage() {
           <div className="inline-flex items-center gap-2 mb-3">
             <div className="w-3 h-3 rounded-full bg-green-primary" />
             <span className="text-xs font-medium tracking-[0.18em] uppercase text-text-primary">
-              BA Dental Studio
+              Odonto Gestión
             </span>
           </div>
           <h1 className="font-display text-2xl font-semibold text-text-primary">
@@ -118,8 +118,18 @@ export default function LoginPage() {
           </button>
         </form>
 
+        {process.env.NEXT_PUBLIC_DEMO_MODE === 'true' && (
+          <div className="mt-4 p-3 bg-blue-light border border-blue/20 rounded-lg text-center">
+            <p className="text-xs font-semibold tracking-wider uppercase text-blue mb-1">
+              Acceso demo
+            </p>
+            <p className="text-sm text-text-primary font-mono">admin@odontogestion.com</p>
+            <p className="text-sm text-text-primary font-mono">demo1234</p>
+          </div>
+        )}
+
         <p className="text-center text-xs text-text-muted mt-6">
-          BA Dental Studio &middot; Gestión Integral
+          Odonto Gestión &middot; Sistema Integral
         </p>
       </div>
     </div>

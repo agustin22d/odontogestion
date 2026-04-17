@@ -1,28 +1,46 @@
 @import "tailwindcss";
 
+/*
+ * Paleta Odonto Gestión — azul / celeste / gris / blanco
+ * Mantenemos los nombres de tokens legacy (green-primary, gold, beige, etc.)
+ * para no refactorizar todos los componentes. Los valores ahora son azules.
+ * Si en el futuro querés renombrar los tokens, es un find-replace global.
+ */
 @theme inline {
-  --color-green-primary: #5e8b6a;
-  --color-green-dark: #4a7055;
-  --color-green-light: #e8f0ea;
-  --color-green-50: #f0f5f1;
-  --color-gold: #c4a882;
-  --color-gold-light: #f5efe6;
-  --color-gold-dark: #a8905f;
-  --color-beige: #f9f6f0;
+  /* Azul principal (antes green-primary) */
+  --color-green-primary: #2563eb;   /* blue-600 */
+  --color-green-dark: #1d4ed8;      /* blue-700 */
+  --color-green-light: #dbeafe;     /* blue-100 */
+  --color-green-50: #eff6ff;        /* blue-50 */
+
+  /* Celeste accent (antes gold) */
+  --color-gold: #0ea5e9;            /* sky-500 */
+  --color-gold-light: #e0f2fe;      /* sky-100 */
+  --color-gold-dark: #0284c7;       /* sky-600 */
+
+  /* Fondo claro (antes beige) */
+  --color-beige: #f8fafc;           /* slate-50 */
   --color-surface: #ffffff;
-  --color-text-primary: #2c2c2a;
-  --color-text-secondary: #6b6b66;
-  --color-text-muted: #9c9a92;
-  --color-border: #e5e2da;
-  --color-border-light: #f0ede5;
-  --color-red: #c94a4a;
-  --color-red-light: #fdf0f0;
-  --color-blue: #4a7fc9;
-  --color-blue-light: #eef4fc;
-  --color-amber: #c99a4a;
-  --color-amber-light: #fdf6ee;
-  --color-purple: #7d5eb0;
-  --color-purple-light: #f3eefa;
+
+  /* Tipografía en grises fríos */
+  --color-text-primary: #0f172a;    /* slate-900 */
+  --color-text-secondary: #475569;  /* slate-600 */
+  --color-text-muted: #94a3b8;      /* slate-400 */
+
+  /* Bordes */
+  --color-border: #e2e8f0;          /* slate-200 */
+  --color-border-light: #f1f5f9;    /* slate-100 */
+
+  /* Semánticos (se mantienen por significado) */
+  --color-red: #dc2626;
+  --color-red-light: #fee2e2;
+  --color-blue: #2563eb;
+  --color-blue-light: #dbeafe;
+  --color-amber: #f59e0b;
+  --color-amber-light: #fef3c7;
+  --color-purple: #7c3aed;
+  --color-purple-light: #ede9fe;
+
   --font-sans: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
   --font-display: 'Fraunces', ui-serif, Georgia, serif;
 }

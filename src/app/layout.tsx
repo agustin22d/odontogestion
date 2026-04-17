@@ -15,8 +15,8 @@ const fraunces = Fraunces({
 })
 
 export const metadata: Metadata = {
-  title: "BA Dental Studio — Gestión",
-  description: "Sistema de gestión integral para BA Dental Studio",
+  title: "Odonto Gestión — Sistema Integral para Clínicas Dentales",
+  description: "Sistema de gestión integral para clínicas dentales: turnos, cobranzas, gastos, stock, empleados y laboratorio.",
 }
 
 export default function RootLayout({

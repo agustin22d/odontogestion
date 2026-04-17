@@ -299,14 +299,16 @@ function AdminDashboard() {
           <h1 className="font-display text-2xl font-semibold text-text-primary mb-1">Dashboard</h1>
           <p className="text-sm text-text-secondary capitalize hidden sm:block">{formatFechaHoy()}</p>
         </div>
-        <SyncButton
-          label="Sync todo"
-          endpoints={[
-            { url: '/api/sync-dentalink', body: { dias: 7 } },
-            { url: '/api/sync-pagos', body: { dias: 7 } },
-          ]}
-          onDone={() => fetchDashboardData()}
-        />
+        {process.env.NEXT_PUBLIC_DEMO_MODE !== 'true' && (
+          <SyncButton
+            label="Sync todo"
+            endpoints={[
+              { url: '/api/sync-dentalink', body: { dias: 7 } },
+              { url: '/api/sync-pagos', body: { dias: 7 } },
+            ]}
+            onDone={() => fetchDashboardData()}
+          />
+        )}
       </div>
 
       {/* Filters */}

@@ -24,6 +24,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recha
 import type { Turno, Sede } from '@/types/database'
 import { getArgentinaToday } from '@/lib/utils/dates'
 import SyncButton from '@/components/SyncButton'
+import ImportExcelButton from '@/components/ImportExcelButton'
 
 type TurnoConSede = Turno & { sedes: Sede }
 type TabId = 'agenda' | 'agendados'
@@ -51,11 +52,16 @@ export default function TurnosPage() {
           <p className="text-sm text-text-secondary hidden sm:block">Agenda diaria y seguimiento de turnos agendados</p>
         </div>
         {isAdmin && (
-          <SyncButton
-            label="Sync Turnos"
-            endpoints={[{ url: '/api/sync-dentalink', body: { dias: 7 } }]}
-            onDone={() => setSyncKey(k => k + 1)}
-          />
+          <div className="flex items-center gap-2">
+            <ImportExcelButton entity="turnos" onSuccess={() => setSyncKey(k => k + 1)} />
+            {process.env.NEXT_PUBLIC_DEMO_MODE !== 'true' && (
+              <SyncButton
+                label="Sync Turnos"
+                endpoints={[{ url: '/api/sync-dentalink', body: { dias: 7 } }]}
+                onDone={() => setSyncKey(k => k + 1)}
+              />
+            )}
+          </div>
         )}
       </div>
 

@@ -69,9 +69,9 @@ export async function GET(request: Request) {
     const resend = new Resend(RESEND_API_KEY)
 
     await resend.emails.send({
-      from: 'BA Dental Backup <onboarding@resend.dev>',
+      from: 'Odonto Gestión Backup <onboarding@resend.dev>',
       to: BACKUP_EMAIL.split(',').map(e => e.trim()),
-      subject: `Backup semanal BA Dental — ${fecha}`,
+      subject: `Backup semanal Odonto Gestión — ${fecha}`,
       html: `
         <h2>Backup semanal — ${fecha}</h2>
         <p>Adjuntos los datos críticos del sistema:</p>
@@ -82,7 +82,7 @@ export async function GET(request: Request) {
           <li><strong>Stock movimientos:</strong> ${stockMovRes.data?.length || 0} movimientos</li>
           <li><strong>Pacientes nuevos:</strong> ${pacientesRes.data?.length || 0} registros</li>
         </ul>
-        <p style="color: #666; font-size: 12px;">Generado automáticamente por BA Dental Gestión</p>
+        <p style="color: #666; font-size: 12px;">Generado automáticamente por Odonto Gestión</p>
       `,
       attachments,
     })

@@ -1,17 +1,17 @@
 import { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Manual de Uso — BA Dental Studio',
+  title: 'Manual de Uso — Odonto Gestión',
 }
 
 export default function ManualPage() {
   return (
-    <div className="min-h-screen bg-[#faf8f5]">
+    <div className="min-h-screen bg-[#f8fafc]">
       <div className="max-w-3xl mx-auto px-4 py-12">
         {/* Header */}
         <div className="text-center mb-12">
-          <h1 className="text-3xl font-bold text-[#1a1a1a] mb-2">BA Dental Studio</h1>
-          <p className="text-lg text-[#666]">Manual de Uso — Sistema de Gestión</p>
+          <h1 className="text-3xl font-bold text-[#0f172a] mb-2">Odonto Gestión</h1>
+          <p className="text-lg text-[#475569]">Manual de Uso — Sistema Integral</p>
         </div>
 
         <div className="space-y-12 text-[#333] text-[15px] leading-relaxed">
@@ -19,7 +19,7 @@ export default function ManualPage() {
           {/* Acceso */}
           <Section title="Acceso al sistema">
             <ol className="list-decimal pl-5 space-y-1">
-              <li>Ingresá a <strong>badentalstudio.online</strong></li>
+              <li>Ingresá al sistema desde la URL provista por tu administrador</li>
               <li>Ingresá tu <strong>email</strong> y <strong>contraseña</strong></li>
               <li>Hacé clic en <strong>Ingresar</strong></li>
             </ol>
@@ -301,7 +301,7 @@ export default function ManualPage() {
 
           {/* Footer */}
           <div className="text-center text-sm text-[#aaa] pt-8 border-t border-[#e5e2dc]">
-            BA Dental Studio — Sistema de Gestión Integral
+            Odonto Gestión — Sistema Integral para Clínicas Dentales
           </div>
         </div>
       </div>
