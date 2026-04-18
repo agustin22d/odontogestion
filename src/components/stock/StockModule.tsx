@@ -251,17 +251,9 @@ function StockResumen({
     return true
   })
 
-  // Alerts (compact, inline)
-  const alerts = stockMap.filter(s => s.cantidad <= s.producto.stock_minimo)
-
-  // Totals per product (across all sedes)
-  const totalsPorProducto: Record<string, { nombre: string; total: number; minimo: number }> = {}
-  stockMap.forEach(s => {
-    if (!totalsPorProducto[s.producto.id]) {
-      totalsPorProducto[s.producto.id] = { nombre: prodLabel(s.producto), total: 0, minimo: s.producto.stock_minimo }
-    }
-    totalsPorProducto[s.producto.id].total += s.cantidad
-  })
+  // Alerts split
+  const sinStock = stockMap.filter(s => s.cantidad <= 0)
+  const stockBajo = stockMap.filter(s => s.cantidad > 0 && s.cantidad <= s.producto.stock_minimo)
 
   // Sort: by sede name, then product name
   const sorted = [...filtered].sort((a, b) => {
@@ -272,31 +264,27 @@ function StockResumen({
 
   return (
     <div className="space-y-4">
-      {/* Summary cards */}
-      {Object.keys(totalsPorProducto).length > 0 && (
-        <div className="flex flex-wrap gap-3">
-          {Object.values(totalsPorProducto).map(t => (
-            <div key={t.nombre} className="bg-surface rounded-lg border border-border px-4 py-3 flex items-center gap-3">
-              <Package size={16} className="text-text-muted" />
-              <div>
-                <p className="text-xs text-text-muted font-medium">{t.nombre}</p>
-                <p className={`text-lg font-semibold ${t.total <= 0 ? 'text-red' : t.total <= t.minimo * sedes.length ? 'text-amber' : 'text-green-primary'}`}>
-                  {t.total} <span className="text-xs font-normal text-text-muted">total</span>
-                </p>
-              </div>
-            </div>
-          ))}
-          {alerts.length > 0 && (
-            <div className="bg-red-light rounded-lg border border-red/20 px-4 py-3 flex items-center gap-2">
-              <AlertTriangle size={16} className="text-red" />
-              <div>
-                <p className="text-xs text-text-muted font-medium">Alertas</p>
-                <p className="text-lg font-semibold text-red">{alerts.length}</p>
-              </div>
-            </div>
-          )}
+      {/* KPIs — solo alertas accionables */}
+      <div className="flex flex-wrap gap-3">
+        <div className={`rounded-lg border px-4 py-3 flex items-center gap-3 ${sinStock.length > 0 ? 'bg-red-light border-red/20' : 'bg-surface border-border'}`}>
+          <AlertTriangle size={16} className={sinStock.length > 0 ? 'text-red' : 'text-text-muted'} />
+          <div>
+            <p className="text-xs text-text-muted font-medium">Sin stock</p>
+            <p className={`text-lg font-semibold ${sinStock.length > 0 ? 'text-red' : 'text-text-secondary'}`}>
+              {sinStock.length}
+            </p>
+          </div>
         </div>
-      )}
+        <div className={`rounded-lg border px-4 py-3 flex items-center gap-3 ${stockBajo.length > 0 ? 'bg-amber-light border-amber/20' : 'bg-surface border-border'}`}>
+          <Package size={16} className={stockBajo.length > 0 ? 'text-amber' : 'text-text-muted'} />
+          <div>
+            <p className="text-xs text-text-muted font-medium">Stock bajo</p>
+            <p className={`text-lg font-semibold ${stockBajo.length > 0 ? 'text-amber' : 'text-text-secondary'}`}>
+              {stockBajo.length}
+            </p>
+          </div>
+        </div>
+      </div>
 
       {/* Search */}
       <div className="flex items-center gap-3">
