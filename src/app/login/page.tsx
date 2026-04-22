@@ -4,14 +4,22 @@ import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
+import { Sparkles, Copy, Check } from 'lucide-react'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [copied, setCopied] = useState<'email' | 'password' | null>(null)
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
+
+  // Credenciales demo desde env vars. Si no están seteadas, el banner no
+  // aparece — así prod no muestra credenciales y DEV/demo sí.
+  const demoEmail = process.env.NEXT_PUBLIC_DEMO_EMAIL || ''
+  const demoPassword = process.env.NEXT_PUBLIC_DEMO_PASSWORD || ''
+  const showDemo = Boolean(demoEmail && demoPassword)
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -33,8 +41,23 @@ export default function LoginPage() {
     router.refresh()
   }
 
+  const autocompletar = () => {
+    setEmail(demoEmail)
+    setPassword(demoPassword)
+  }
+
+  const copy = async (text: string, kind: 'email' | 'password') => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(kind)
+      setTimeout(() => setCopied(null), 1500)
+    } catch {
+      // ignore
+    }
+  }
+
   return (
-    <div className="min-h-screen bg-beige flex items-center justify-center px-4">
+    <div className="min-h-screen bg-beige flex items-center justify-center px-4 py-8">
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
@@ -51,6 +74,54 @@ export default function LoginPage() {
             Gestión integral para tu clínica dental
           </p>
         </div>
+
+        {/* Banner demo (solo si hay env vars) */}
+        {showDemo && (
+          <div className="mb-4 p-4 bg-blue-light border border-blue/20 rounded-xl">
+            <div className="flex items-center gap-2 mb-2">
+              <Sparkles size={14} className="text-blue" />
+              <p className="text-xs font-semibold tracking-wider uppercase text-blue">
+                Acceso demo
+              </p>
+            </div>
+            <p className="text-xs text-text-secondary mb-3">
+              Probá el sistema con datos de ejemplo:
+            </p>
+            <div className="space-y-1.5 mb-3">
+              <button
+                type="button"
+                onClick={() => copy(demoEmail, 'email')}
+                className="w-full flex items-center justify-between gap-2 px-2.5 py-1.5 bg-white border border-border rounded-lg text-xs hover:border-blue transition-colors group"
+              >
+                <span className="font-mono text-text-primary truncate">{demoEmail}</span>
+                {copied === 'email' ? (
+                  <Check size={12} className="text-green-primary shrink-0" />
+                ) : (
+                  <Copy size={12} className="text-text-muted group-hover:text-blue shrink-0" />
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => copy(demoPassword, 'password')}
+                className="w-full flex items-center justify-between gap-2 px-2.5 py-1.5 bg-white border border-border rounded-lg text-xs hover:border-blue transition-colors group"
+              >
+                <span className="font-mono text-text-primary truncate">{demoPassword}</span>
+                {copied === 'password' ? (
+                  <Check size={12} className="text-green-primary shrink-0" />
+                ) : (
+                  <Copy size={12} className="text-text-muted group-hover:text-blue shrink-0" />
+                )}
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={autocompletar}
+              className="w-full px-3 py-2 bg-blue text-white text-xs font-medium rounded-lg hover:opacity-90 transition-opacity"
+            >
+              Autocompletar y probar
+            </button>
+          </div>
+        )}
 
         {/* Form */}
         <form onSubmit={handleLogin} className="bg-surface rounded-xl border border-border p-6 shadow-sm">
