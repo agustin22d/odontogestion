@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
   DollarSign,
   CalendarDays,
   TrendingUp,
+  TrendingDown,
   Clock,
   CheckSquare,
   XCircle,
@@ -18,6 +19,8 @@ import {
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import type { Sede } from '@/types/database'
 import { getArgentinaToday, getArgentinaDate, formatFechaHoyAR } from '@/lib/utils/dates'
+
+type RangoPreset = 'hoy' | 'semana' | 'mes' | 'anio' | 'custom'
 
 interface TurnoStats {
   total: number
@@ -35,12 +38,6 @@ interface TurnosPorSede {
   noShows: number
 }
 
-interface CobranzaStats {
-  hoy: number
-  semana: number
-  mes: number
-}
-
 export default function DashboardPage() {
   return <AdminDashboard />
 }
@@ -49,11 +46,16 @@ function AdminDashboard() {
   const supabase = createClient()
   const [sedes, setSedes] = useState<Sede[]>([])
   const [sedeFilter, setSedeFilter] = useState<string>('todas')
+  const [rango, setRango] = useState<RangoPreset>('mes')
+  const [customInicio, setCustomInicio] = useState(() => getArgentinaToday())
+  const [customFin, setCustomFin] = useState(() => getArgentinaToday())
+
   const [turnoStats, setTurnoStats] = useState<TurnoStats>({ total: 0, atendidos: 0, noShows: 0, cancelados: 0, agendados: 0, tasaShow: 0 })
   const [turnosPorSede, setTurnosPorSede] = useState<TurnosPorSede[]>([])
-  const [cobranzaStats, setCobranzaStats] = useState<CobranzaStats>({ hoy: 0, semana: 0, mes: 0 })
+  const [cobradoRango, setCobradoRango] = useState(0)
+  const [gastosRango, setGastosRango] = useState(0)
   const [deudasPendientes, setDeudasPendientes] = useState(0)
-  const [chartData, setChartData] = useState<{ dia: string; cobrado: number; gastos: number }[]>([])
+  const [chartData, setChartData] = useState<{ label: string; cobrado: number; gastos: number }[]>([])
   const [turnosDadosHoy, setTurnosDadosHoy] = useState(0)
   const [stockBajo, setStockBajo] = useState(0)
   const [labPendientes, setLabPendientes] = useState(0)
@@ -62,6 +64,9 @@ function AdminDashboard() {
   const [fetchError, setFetchError] = useState<string | null>(null)
 
   const hoy = getArgentinaToday()
+
+  // Calcular inicio/fin según el rango seleccionado
+  const { inicio, fin, label } = useMemo(() => computeRango(rango, customInicio, customFin, hoy), [rango, customInicio, customFin, hoy])
 
   const fetchSedes = useCallback(async () => {
     const { data, error } = await supabase.from('sedes').select('*').eq('activa', true).order('nombre')
@@ -74,20 +79,13 @@ function AdminDashboard() {
     setLoading(true)
     setFetchError(null)
     try {
-      const inicioSemana = getInicioSemana()
-      const inicioMes = hoy.slice(0, 7) + '-01'
-
       let turnosQuery = supabase.from('turnos').select('*, sedes(nombre)').eq('fecha', hoy)
       if (sedeFilter !== 'todas') turnosQuery = turnosQuery.eq('sede_id', sedeFilter)
 
-      const cobHoyQuery = supabase.from('cobranzas').select('monto, sede_id').eq('fecha', hoy)
-      const cobSemQuery = supabase.from('cobranzas').select('monto, sede_id').gte('fecha', inicioSemana).lte('fecha', hoy)
-      const cobMesQuery = supabase.from('cobranzas').select('monto, sede_id').gte('fecha', inicioMes).lte('fecha', hoy)
+      const cobRangoQuery = supabase.from('cobranzas').select('fecha, monto, sede_id').gte('fecha', inicio).lte('fecha', fin)
+      const gasRangoQuery = supabase.from('gastos').select('fecha, monto, sede_id, estado_pago').gte('fecha', inicio).lte('fecha', fin)
 
       const deudasQuery = supabase.from('deudas').select('monto_total, monto_cobrado, sede_id').in('estado', ['pendiente', 'parcial'])
-
-      const chartCobQuery = supabase.from('cobranzas').select('fecha, monto, sede_id').gte('fecha', inicioMes).lte('fecha', hoy)
-      const chartGasQuery = supabase.from('gastos').select('fecha, monto, sede_id').gte('fecha', inicioMes).lte('fecha', hoy)
       const sedesQuery = supabase.from('sedes').select('*').eq('activa', true).order('nombre')
 
       const turnosDadosQuery = supabase.from('turnos').select('id', { count: 'exact', head: true }).gte('created_at', hoy + 'T00:00:00').lt('created_at', hoy + 'T23:59:59.999')
@@ -96,12 +94,11 @@ function AdminDashboard() {
       const labQuery = supabase.from('laboratorio_casos').select('id', { count: 'exact', head: true }).in('estado', ['escaneado', 'enviada', 'en_proceso', 'a_revisar'])
       const gastosHoyQuery = supabase.from('gastos').select('id', { count: 'exact', head: true }).eq('estado_pago', 'pendiente').eq('fecha_vencimiento', hoy)
 
-      const [turnosRes, cobHoyRes, cobSemRes, cobMesRes, deudasRes, chartCobRes, chartGasRes, sedesRes, turnosDadosRes, stockProdRes, stockMovRes, labRes, gastosHoyRes] = await Promise.all([
-        turnosQuery, cobHoyQuery, cobSemQuery, cobMesQuery, deudasQuery, chartCobQuery, chartGasQuery, sedesQuery, turnosDadosQuery, stockProductosQuery, stockMovQuery, labQuery, gastosHoyQuery,
+      const [turnosRes, cobRangoRes, gasRangoRes, deudasRes, sedesRes, turnosDadosRes, stockProdRes, stockMovRes, labRes, gastosHoyRes] = await Promise.all([
+        turnosQuery, cobRangoQuery, gasRangoQuery, deudasQuery, sedesQuery, turnosDadosQuery, stockProductosQuery, stockMovQuery, labQuery, gastosHoyQuery,
       ])
 
-      const queryResults = [turnosRes, cobHoyRes, cobSemRes, cobMesRes, deudasRes, chartCobRes, chartGasRes, sedesRes, stockProdRes, stockMovRes]
-      const errors = queryResults.map(r => r.error).filter(Boolean)
+      const errors = [turnosRes, cobRangoRes, gasRangoRes, deudasRes, sedesRes, stockProdRes, stockMovRes].map(r => r.error).filter(Boolean)
       if (errors.length > 0) {
         console.error('Dashboard query errors:', errors)
         setFetchError('Algunas consultas fallaron. Los datos pueden estar incompletos.')
@@ -121,7 +118,7 @@ function AdminDashboard() {
         return g.sede_id === sedeFilter ? monto : 0
       }
 
-      // Process turnos
+      // Turnos (siempre "hoy" — operativo)
       const turnosHoy = turnosRes.data || []
       const total = turnosHoy.length
       const atendidos = turnosHoy.filter((t: { estado: string }) => t.estado === 'atendido').length
@@ -132,7 +129,6 @@ function AdminDashboard() {
       const tasaShow = relevantes > 0 ? Math.round((atendidos / relevantes) * 100) : 0
       setTurnoStats({ total, atendidos, noShows, cancelados, agendados, tasaShow })
 
-      // Process turnos por sede
       if (sedeFilter === 'todas') {
         const porSede: Record<string, TurnosPorSede> = {}
         turnosHoy.forEach((t: { sedes: { nombre: string } | null; estado: string }) => {
@@ -145,24 +141,23 @@ function AdminDashboard() {
         setTurnosPorSede(Object.values(porSede).sort((a, b) => b.total - a.total))
       }
 
-      // Process cobranzas
-      setCobranzaStats({
-        hoy: (cobHoyRes.data || []).reduce((sum: number, c: { monto: number; sede_id?: string | null }) => sum + cobMonto(c), 0),
-        semana: (cobSemRes.data || []).reduce((sum: number, c: { monto: number; sede_id?: string | null }) => sum + cobMonto(c), 0),
-        mes: (cobMesRes.data || []).reduce((sum: number, c: { monto: number; sede_id?: string | null }) => sum + cobMonto(c), 0),
-      })
+      // Cobranzas y gastos del rango
+      const cobData = (cobRangoRes.data || []) as { fecha: string; monto: number; sede_id?: string | null }[]
+      const gasData = (gasRangoRes.data || []) as { fecha: string; monto: number; sede_id?: string | null; estado_pago?: string }[]
 
-      // Process deudas
+      setCobradoRango(cobData.reduce((s, c) => s + cobMonto(c), 0))
+      setGastosRango(gasData.filter(g => g.estado_pago === 'pagado').reduce((s, g) => s + gasMonto(g), 0))
+
+      // Deudas (todas las activas, independiente del rango)
       const deudasData = (deudasRes.data || []) as { monto_total: number; monto_cobrado: number; sede_id?: string }[]
       const totalDeudas = sedeFilter === 'todas'
         ? deudasData.reduce((sum, d) => sum + (Number(d.monto_total) - Number(d.monto_cobrado)), 0)
         : deudasData.filter(d => d.sede_id === sedeFilter).reduce((sum, d) => sum + (Number(d.monto_total) - Number(d.monto_cobrado)), 0)
       setDeudasPendientes(totalDeudas)
 
-      // Turnos dados hoy (creados hoy en la tabla turnos)
       setTurnosDadosHoy(turnosDadosRes.count || 0)
 
-      // Process stock bajo
+      // Stock bajo
       const productos = (stockProdRes.data || []) as { id: string; stock_minimo: number }[]
       const movimientos = (stockMovRes.data || []) as { producto_id: string; sede_id: string; tipo: string; cantidad: number }[]
       const stockMap: Record<string, number> = {}
@@ -183,24 +178,8 @@ function AdminDashboard() {
       setLabPendientes(labRes.count || 0)
       setGastosVencenHoy(gastosHoyRes.count || 0)
 
-      // Chart
-      const cobByDay: Record<string, number> = {}
-      const gasByDay: Record<string, number> = {}
-      ;(chartCobRes.data || []).forEach((c: { fecha: string; monto: number; sede_id?: string | null }) => {
-        const m = cobMonto(c)
-        if (m > 0) cobByDay[c.fecha] = (cobByDay[c.fecha] || 0) + m
-      })
-      ;(chartGasRes.data || []).forEach((g: { fecha: string; monto: number; sede_id?: string | null }) => {
-        const m = gasMonto(g)
-        if (m > 0) gasByDay[g.fecha] = (gasByDay[g.fecha] || 0) + m
-      })
-      const allDays = new Set([...Object.keys(cobByDay), ...Object.keys(gasByDay)])
-      const sorted = Array.from(allDays).sort()
-      setChartData(sorted.map(d => ({
-        dia: d.split('-')[2],
-        cobrado: cobByDay[d] || 0,
-        gastos: gasByDay[d] || 0,
-      })))
+      // Chart: bucketizar por día si el rango es corto, por mes si es largo
+      setChartData(buildChartData(cobData, gasData, inicio, fin, cobMonto, gasMonto))
     } catch (err) {
       console.error('Error fetching dashboard:', err)
       setFetchError('Error al cargar el dashboard. Intentá recargar la página.')
@@ -208,7 +187,7 @@ function AdminDashboard() {
       setLoading(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hoy, sedeFilter])
+  }, [hoy, sedeFilter, inicio, fin])
 
   useEffect(() => { fetchSedes() }, [fetchSedes])
   useEffect(() => { fetchDashboardData() }, [fetchDashboardData])
@@ -217,9 +196,7 @@ function AdminDashboard() {
     return n.toLocaleString('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 })
   }
 
-  const formatFechaHoy = () => {
-    return formatFechaHoyAR()
-  }
+  const resultado = cobradoRango - gastosRango
 
   return (
     <div>
@@ -227,7 +204,7 @@ function AdminDashboard() {
       <div className="flex items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="font-display text-2xl font-semibold text-text-primary mb-1">Dashboard</h1>
-          <p className="text-sm text-text-secondary capitalize hidden sm:block">{formatFechaHoy()}</p>
+          <p className="text-sm text-text-secondary capitalize hidden sm:block">{formatFechaHoyAR()}</p>
         </div>
       </div>
 
@@ -243,7 +220,17 @@ function AdminDashboard() {
             <option key={s.id} value={s.id}>{s.nombre}</option>
           ))}
         </select>
-        <span className="text-sm text-text-secondary capitalize sm:hidden">{formatFechaHoy()}</span>
+
+        <RangoSelector
+          rango={rango}
+          setRango={setRango}
+          customInicio={customInicio}
+          setCustomInicio={setCustomInicio}
+          customFin={customFin}
+          setCustomFin={setCustomFin}
+        />
+
+        <span className="text-xs text-text-muted ml-auto">Período: <span className="font-medium text-text-secondary">{label}</span></span>
       </div>
 
       {fetchError && (
@@ -260,20 +247,25 @@ function AdminDashboard() {
         <div className="text-center text-text-muted py-12 text-sm">Cargando dashboard...</div>
       ) : (
         <>
-          {/* Row 1 */}
+          {/* Row 1 — Financieros del rango */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
             <KPICard
               icon={<DollarSign size={20} />}
-              label="Cobrado hoy"
-              value={formatMoney(cobranzaStats.hoy)}
-              subtitle={`Semana: ${formatMoney(cobranzaStats.semana)}`}
+              label={`Cobrado · ${label}`}
+              value={formatMoney(cobradoRango)}
               color="green"
             />
             <KPICard
-              icon={<DollarSign size={20} />}
-              label="Cobrado mes"
-              value={formatMoney(cobranzaStats.mes)}
-              color="green"
+              icon={<TrendingDown size={20} />}
+              label={`Gastos pagados · ${label}`}
+              value={formatMoney(gastosRango)}
+              color="red"
+            />
+            <KPICard
+              icon={<TrendingUp size={20} />}
+              label={`Resultado · ${label}`}
+              value={formatMoney(resultado)}
+              color={resultado >= 0 ? 'green' : 'red'}
             />
             <KPICard
               icon={<Clock size={20} />}
@@ -282,16 +274,9 @@ function AdminDashboard() {
               subtitle="Deudas activas"
               color="gold"
             />
-            <KPICard
-              icon={<AlertTriangle size={20} />}
-              label="Gastos hoy"
-              value={gastosVencenHoy.toString()}
-              subtitle={gastosVencenHoy > 0 ? 'Vencimientos pendientes' : 'Sin vencimientos'}
-              color={gastosVencenHoy > 0 ? 'red' : 'green'}
-            />
           </div>
 
-          {/* Row 2 */}
+          {/* Row 2 — Turnos de hoy */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
             <KPICard
               icon={<CalendarDays size={20} />}
@@ -308,20 +293,21 @@ function AdminDashboard() {
             />
             <KPICard
               icon={<TrendingUp size={20} />}
-              label="Tasa de show"
+              label="Tasa de show · hoy"
               value={`${turnoStats.tasaShow}%`}
               subtitle={`${turnoStats.atendidos} atendidos / ${turnoStats.noShows} no-shows`}
               color={turnoStats.tasaShow >= 80 ? 'green' : turnoStats.tasaShow >= 60 ? 'amber' : 'red'}
             />
             <KPICard
-              icon={<CalendarDays size={20} />}
-              label="Cancelados hoy"
-              value={turnoStats.cancelados.toString()}
-              color="amber"
+              icon={<AlertTriangle size={20} />}
+              label="Gastos vencen hoy"
+              value={gastosVencenHoy.toString()}
+              subtitle={gastosVencenHoy > 0 ? 'Vencimientos pendientes' : 'Sin vencimientos'}
+              color={gastosVencenHoy > 0 ? 'red' : 'green'}
             />
           </div>
 
-          {/* Row 3 */}
+          {/* Row 3 — Operativo */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             <KPICard
               icon={<CalendarPlus size={20} />}
@@ -358,18 +344,16 @@ function AdminDashboard() {
             <div className="bg-surface rounded-xl border border-border p-5 mb-6">
               <h2 className="text-sm font-semibold text-text-primary mb-4 flex items-center gap-2">
                 <TrendingUp size={16} className="text-text-muted" />
-                Cobranzas vs Gastos — este mes
+                Cobranzas vs Gastos · {label}
               </h2>
               <div className="h-[220px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={chartData} barGap={2}>
-                    <XAxis dataKey="dia" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                    <XAxis dataKey="label" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
                     <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v: number) => v >= 1000 ? `${Math.round(v / 1000)}k` : String(v)} width={40} />
                     <Tooltip
                       // eslint-disable-next-line @typescript-eslint/no-explicit-any
                       formatter={(value: any) => Number(value).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 })}
-                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      labelFormatter={(label: any) => `Día ${label}`}
                       contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e5e7eb' }}
                     />
                     <Bar dataKey="cobrado" name="Cobrado" fill="#4a7c59" radius={[3, 3, 0, 0]} />
@@ -417,13 +401,67 @@ function AdminDashboard() {
               </div>
             </div>
           )}
-
-          <p className="text-xs text-text-muted">
-            Datos en tiempo real de todas las sedes.
-          </p>
         </>
       )}
     </div>
+  )
+}
+
+// ── Range selector ──────────────────────────────────
+function RangoSelector({
+  rango, setRango, customInicio, setCustomInicio, customFin, setCustomFin,
+}: {
+  rango: RangoPreset
+  setRango: (r: RangoPreset) => void
+  customInicio: string
+  setCustomInicio: (v: string) => void
+  customFin: string
+  setCustomFin: (v: string) => void
+}) {
+  const presets: { id: RangoPreset; label: string }[] = [
+    { id: 'hoy', label: 'Hoy' },
+    { id: 'semana', label: '7 días' },
+    { id: 'mes', label: 'Mes' },
+    { id: 'anio', label: 'Año' },
+    { id: 'custom', label: 'Rango' },
+  ]
+
+  return (
+    <>
+      <div className="flex items-center gap-1 bg-surface border border-border rounded-lg p-0.5">
+        {presets.map(p => (
+          <button
+            key={p.id}
+            onClick={() => setRango(p.id)}
+            className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+              rango === p.id
+                ? 'bg-green-primary text-white shadow-sm'
+                : 'text-text-secondary hover:text-text-primary hover:bg-beige'
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+
+      {rango === 'custom' && (
+        <div className="flex items-center gap-1 text-xs">
+          <input
+            type="date"
+            value={customInicio}
+            onChange={e => setCustomInicio(e.target.value)}
+            className="border border-border rounded-lg px-2 py-1 bg-surface focus:outline-none focus:border-green-primary"
+          />
+          <span className="text-text-muted">→</span>
+          <input
+            type="date"
+            value={customFin}
+            onChange={e => setCustomFin(e.target.value)}
+            className="border border-border rounded-lg px-2 py-1 bg-surface focus:outline-none focus:border-green-primary"
+          />
+        </div>
+      )}
+    </>
   )
 }
 
@@ -459,10 +497,84 @@ function KPICard({ icon, label, value, subtitle, color = 'green' }: {
   )
 }
 
-function getInicioSemana(): string {
+// ── Helpers de rango + chart bucketing ──────────────
+
+function computeRango(preset: RangoPreset, customInicio: string, customFin: string, hoy: string): { inicio: string; fin: string; label: string } {
   const d = getArgentinaDate()
-  const day = d.getDay()
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1) // Monday
-  d.setDate(diff)
-  return d.toISOString().split('T')[0]
+  const y = d.getFullYear()
+  const m = d.getMonth()
+
+  switch (preset) {
+    case 'hoy':
+      return { inicio: hoy, fin: hoy, label: 'hoy' }
+    case 'semana': {
+      const inicioD = new Date(d)
+      inicioD.setDate(d.getDate() - 6)
+      return { inicio: inicioD.toISOString().split('T')[0], fin: hoy, label: '7 días' }
+    }
+    case 'mes': {
+      const inicioD = new Date(y, m, 1)
+      const finD = new Date(y, m + 1, 0)
+      return {
+        inicio: inicioD.toISOString().split('T')[0],
+        fin: finD.toISOString().split('T')[0],
+        label: inicioD.toLocaleDateString('es-AR', { month: 'long' }),
+      }
+    }
+    case 'anio': {
+      const inicioD = new Date(y, 0, 1)
+      const finD = new Date(y, 11, 31)
+      return {
+        inicio: inicioD.toISOString().split('T')[0],
+        fin: finD.toISOString().split('T')[0],
+        label: String(y),
+      }
+    }
+    case 'custom':
+      return {
+        inicio: customInicio,
+        fin: customFin >= customInicio ? customFin : customInicio,
+        label: 'rango',
+      }
+  }
+}
+
+function buildChartData(
+  cobData: { fecha: string; monto: number; sede_id?: string | null }[],
+  gasData: { fecha: string; monto: number; sede_id?: string | null; estado_pago?: string }[],
+  inicio: string,
+  fin: string,
+  cobMonto: (c: { monto: number; sede_id?: string | null }) => number,
+  gasMonto: (g: { monto: number; sede_id?: string | null }) => number,
+): { label: string; cobrado: number; gastos: number }[] {
+  const diffDays = Math.ceil((new Date(fin).getTime() - new Date(inicio).getTime()) / (1000 * 60 * 60 * 24)) + 1
+  const bucketByMonth = diffDays > 62
+
+  const buckets: Record<string, { cobrado: number; gastos: number }> = {}
+
+  cobData.forEach(c => {
+    const key = bucketByMonth ? c.fecha.slice(0, 7) : c.fecha
+    const m = cobMonto(c)
+    if (m > 0) {
+      if (!buckets[key]) buckets[key] = { cobrado: 0, gastos: 0 }
+      buckets[key].cobrado += m
+    }
+  })
+  gasData.forEach(g => {
+    const key = bucketByMonth ? g.fecha.slice(0, 7) : g.fecha
+    const m = gasMonto(g)
+    if (m > 0) {
+      if (!buckets[key]) buckets[key] = { cobrado: 0, gastos: 0 }
+      buckets[key].gastos += m
+    }
+  })
+
+  const sortedKeys = Object.keys(buckets).sort()
+  return sortedKeys.map(k => ({
+    label: bucketByMonth
+      ? new Date(k + '-01').toLocaleDateString('es-AR', { month: 'short' })
+      : k.split('-')[2],
+    cobrado: buckets[k].cobrado,
+    gastos: buckets[k].gastos,
+  }))
 }
