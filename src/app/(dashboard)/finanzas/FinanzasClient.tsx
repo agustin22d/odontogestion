@@ -398,7 +398,8 @@ function ResumenTab({ sedes }: { sedes: Sede[] }) {
 // COBRANZAS TAB (fully functional)
 // ============================================
 function CobranzasTab({ syncKey, sedes }: { syncKey: number; sedes: Sede[] }) {
-  const { user } = useAuth()
+  const { user, hasPermission } = useAuth()
+  const canDelete = hasPermission('cobranzas.delete')
   const supabase = createClient()
   const [cobranzas, setCobranzas] = useState<CobranzaConSede[]>([])
   const [loading, setLoading] = useState(true)
@@ -433,9 +434,9 @@ function CobranzasTab({ syncKey, sedes }: { syncKey: number; sedes: Sede[] }) {
         .eq('fecha', fecha)
         .order('created_at', { ascending: false })
 
-      // sede filter applied client-side to include multi-sede entries
-
-      if (user?.rol === 'rolC' && user.sede_id) {
+      // Los miembros con sede asignada y sin permiso admin solo ven su sede.
+      // Los demás casos pasan por RLS del backend.
+      if (user?.sede_id && !hasPermission('settings.users')) {
         query = query.eq('sede_id', user.sede_id)
       }
 
@@ -895,7 +896,7 @@ function CobranzasTab({ syncKey, sedes }: { syncKey: number; sedes: Sede[] }) {
                   <th className="text-left px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide">Medio</th>
                   <th className="text-right px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide">Monto</th>
                   <th className="text-left px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide hidden lg:table-cell">Notas</th>
-                  {user?.rol === 'admin' && (
+                  {canDelete && (
                     <th className="text-center px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide w-16"></th>
                   )}
                 </tr>
@@ -947,7 +948,7 @@ function CobranzasTab({ syncKey, sedes }: { syncKey: number; sedes: Sede[] }) {
                       <td className="px-4 py-3 text-text-muted text-xs hidden lg:table-cell max-w-[200px] truncate">
                         {c.notas || '\u2014'}
                       </td>
-                      {user?.rol === 'admin' && (
+                      {canDelete && (
                         <td className="px-4 py-3 text-center">
                           {!isDentalink && (
                             <button
@@ -1262,6 +1263,8 @@ interface GastoRow {
 function GastosTab({ sedes }: { sedes: Sede[] }) {
   const { user } = useAuth()
   const supabase = createClient()
+  // user se usa abajo para created_by en el insert; permisos UI aquí asumimos
+  // que quien llega tiene gastos.view (lo filtra el Sidebar).
 
   const [gastos, setGastos] = useState<GastoRow[]>([])
   const [loading, setLoading] = useState(true)
