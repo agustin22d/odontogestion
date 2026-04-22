@@ -9,29 +9,38 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
-  const user = await getCurrentUser()
+  let user = null
+  try {
+    user = await getCurrentUser()
+  } catch (err) {
+    console.error('[layout] getCurrentUser falló:', err)
+  }
 
   if (!user) {
     // Clear stale session to prevent redirect loop with middleware
-    await signOut()
+    try { await signOut() } catch { /* noop */ }
     redirect('/login')
   }
 
   // White-label: cargar los colores de la clínica y exponerlos como CSS vars.
-  // Si no hay clinic_id (usuario sin membership) o falla la query, cae al default.
+  // Si no hay clinic_id o falla la query, cae al default (NO romper el layout).
   let colorPrimario = '#0ea5e9'
   let colorAcento = '#0284c7'
   if (user.clinic_id) {
-    const supabase = await createClient()
-    const { data } = await supabase
-      .from('clinic_settings')
-      .select('color_primario, color_acento')
-      .eq('clinic_id', user.clinic_id)
-      .maybeSingle()
-    if (data) {
-      const settings = data as unknown as { color_primario: string; color_acento: string }
-      colorPrimario = settings.color_primario
-      colorAcento = settings.color_acento
+    try {
+      const supabase = await createClient()
+      const { data } = await supabase
+        .from('clinic_settings')
+        .select('color_primario, color_acento')
+        .eq('clinic_id', user.clinic_id)
+        .maybeSingle()
+      if (data) {
+        const settings = data as unknown as { color_primario: string; color_acento: string }
+        colorPrimario = settings.color_primario
+        colorAcento = settings.color_acento
+      }
+    } catch (err) {
+      console.error('[layout] clinic_settings query falló:', err)
     }
   }
 
