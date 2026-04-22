@@ -1,8 +1,9 @@
-import { requireRole } from '@/lib/auth-guard'
+import { getCurrentUser } from '@/lib/auth'
+import { redirect } from 'next/navigation'
 import ConfiguracionClient from './ConfiguracionClient'
 
 export default async function ConfiguracionPage() {
-  await requireRole('admin')
-
+  const user = await getCurrentUser()
+  if (!user) redirect('/login')
   return <ConfiguracionClient />
 }

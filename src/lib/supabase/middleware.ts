@@ -35,8 +35,8 @@ export async function updateSession(request: NextRequest) {
   const isPublicRoute =
     pathname.startsWith('/login') ||
     pathname.startsWith('/signup') ||
-    pathname.startsWith('/api/') ||
-    pathname.startsWith('/cambiar-clave')
+    pathname.startsWith('/invite') ||
+    pathname.startsWith('/api/')
 
   // Check if session JWT is expired (applies to ALL routes)
   const isExpired = session?.expires_at

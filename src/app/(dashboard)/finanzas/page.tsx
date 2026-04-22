@@ -1,7 +1,9 @@
-import { requireRole } from '@/lib/auth-guard'
+import { getCurrentUser } from '@/lib/auth'
+import { redirect } from 'next/navigation'
 import FinanzasPage from './FinanzasClient'
 
 export default async function FinanzasServerPage() {
-  await requireRole('admin')
+  const user = await getCurrentUser()
+  if (!user) redirect('/login')
   return <FinanzasPage />
 }

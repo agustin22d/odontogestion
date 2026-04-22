@@ -1,253 +1,625 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useAuth } from '@/components/AuthProvider'
 import {
+  Building2,
+  MapPin,
   Users,
   Plus,
-  X,
   Pencil,
   Trash2,
-  KeyRound,
-  Eye,
-  EyeOff,
-  Shield,
-  MapPin,
-  AlertCircle,
   Check,
-  Clock,
-  DollarSign,
+  X,
+  AlertCircle,
+  Palette,
+  Link as LinkIcon,
+  Copy,
 } from 'lucide-react'
-import type { UserRole, Sede } from '@/types/database'
+import type { Sede, ClinicSettings, Invitation } from '@/types/database'
 
-interface UserWithSede {
-  id: string
-  email: string
-  nombre: string
-  rol: UserRole
-  sede_id: string | null
-  created_at: string
-  sede: { nombre: string } | null
-  must_change_password?: boolean
-  current_password?: string | null
-}
+type Tab = 'clinica' | 'sedes' | 'equipo'
 
-const ROLE_LABELS: Record<UserRole, string> = {
-  admin: 'Administrador',
-  rolA: 'Recepcionista Digital',
-  rolB: 'Vendedor',
-  rolC: 'Recepcionista',
-  rolD: 'Asistente',
-}
-
-const ROLE_COLORS: Record<UserRole, string> = {
-  admin: 'bg-purple-100 text-purple-700',
-  rolA: 'bg-blue-100 text-blue-700',
-  rolB: 'bg-amber-100 text-amber-700',
-  rolC: 'bg-green-100 text-green-700',
-  rolD: 'bg-pink-100 text-pink-700',
-}
+const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
+  { id: 'clinica', label: 'Clínica', icon: <Building2 size={16} /> },
+  { id: 'sedes', label: 'Sedes', icon: <MapPin size={16} /> },
+  { id: 'equipo', label: 'Equipo', icon: <Users size={16} /> },
+]
 
 export default function ConfiguracionClient() {
-  const [users, setUsers] = useState<UserWithSede[]>([])
+  const [activeTab, setActiveTab] = useState<Tab>('clinica')
+
+  return (
+    <div>
+      <div className="mb-6">
+        <h1 className="font-display text-2xl font-semibold text-text-primary mb-1">Configuración</h1>
+        <p className="text-sm text-text-secondary hidden sm:block">Clínica, sedes y equipo</p>
+      </div>
+
+      <div className="flex items-center gap-1 bg-surface border border-border rounded-lg p-1 mb-6 max-w-full overflow-x-auto">
+        {TABS.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap shrink-0
+              ${activeTab === tab.id
+                ? 'bg-green-primary text-white shadow-sm'
+                : 'text-text-secondary hover:text-text-primary hover:bg-beige'
+              }`}
+          >
+            {tab.icon}
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ display: activeTab === 'clinica' ? 'block' : 'none' }}>
+        <ClinicaTab />
+      </div>
+      <div style={{ display: activeTab === 'sedes' ? 'block' : 'none' }}>
+        <SedesTab />
+      </div>
+      <div style={{ display: activeTab === 'equipo' ? 'block' : 'none' }}>
+        <EquipoTab />
+      </div>
+    </div>
+  )
+}
+
+// ============================================
+// Clínica tab — datos + white-label
+// ============================================
+function ClinicaTab() {
+  const { user } = useAuth()
+  const supabase = createClient()
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
+  const [clinicNombre, setClinicNombre] = useState('')
+  const [settings, setSettings] = useState<ClinicSettings | null>(null)
+
+  const fetchData = useCallback(async () => {
+    if (!user?.clinic_id) return
+    setLoading(true)
+    const [clinicRes, settingsRes] = await Promise.all([
+      supabase.from('clinics').select('nombre').eq('id', user.clinic_id).maybeSingle(),
+      supabase.from('clinic_settings').select('*').eq('clinic_id', user.clinic_id).maybeSingle(),
+    ])
+    if (clinicRes.data) setClinicNombre((clinicRes.data as { nombre: string }).nombre)
+    if (settingsRes.data) setSettings(settingsRes.data as unknown as ClinicSettings)
+    setLoading(false)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.clinic_id])
+
+  useEffect(() => { fetchData() }, [fetchData])
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!user?.clinic_id || !settings) return
+    setSaving(true)
+    setFeedback(null)
+
+    const { error: clinicError } = await supabase
+      .from('clinics')
+      .update({ nombre: clinicNombre })
+      .eq('id', user.clinic_id)
+
+    const { error: settingsError } = await supabase
+      .from('clinic_settings')
+      .update({
+        color_primario: settings.color_primario,
+        color_acento: settings.color_acento,
+        logo_url: settings.logo_url,
+        timezone: settings.timezone,
+        moneda: settings.moneda,
+      })
+      .eq('clinic_id', user.clinic_id)
+
+    if (clinicError || settingsError) {
+      setFeedback({ type: 'error', msg: (clinicError || settingsError)?.message || 'Error al guardar' })
+    } else {
+      setFeedback({ type: 'success', msg: 'Cambios guardados' })
+    }
+    setSaving(false)
+  }
+
+  if (loading) return <div className="text-sm text-text-muted py-8 text-center">Cargando...</div>
+  if (!settings) return <div className="text-sm text-text-muted py-8 text-center">No encontramos configuración para esta clínica.</div>
+
+  return (
+    <form onSubmit={handleSave} className="max-w-2xl space-y-6">
+      {feedback && (
+        <div className={`flex items-center gap-2 p-3 rounded-lg text-sm ${feedback.type === 'success' ? 'bg-green-light text-green-primary' : 'bg-red-light text-red'}`}>
+          {feedback.type === 'success' ? <Check size={16} /> : <AlertCircle size={16} />}
+          {feedback.msg}
+        </div>
+      )}
+
+      <section className="bg-surface rounded-xl border border-border p-5">
+        <h2 className="text-sm font-semibold text-text-primary mb-4 flex items-center gap-2">
+          <Building2 size={16} className="text-text-muted" />
+          Datos de la clínica
+        </h2>
+        <label className="block text-xs font-medium text-text-secondary mb-1">Nombre</label>
+        <input
+          type="text"
+          value={clinicNombre}
+          onChange={e => setClinicNombre(e.target.value)}
+          className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-green-primary"
+          required
+        />
+      </section>
+
+      <section className="bg-surface rounded-xl border border-border p-5">
+        <h2 className="text-sm font-semibold text-text-primary mb-4 flex items-center gap-2">
+          <Palette size={16} className="text-text-muted" />
+          Marca (aplica en tiempo real)
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-medium text-text-secondary mb-1">Color primario</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={settings.color_primario}
+                onChange={e => setSettings({ ...settings, color_primario: e.target.value })}
+                className="w-12 h-10 border border-border rounded-lg cursor-pointer"
+              />
+              <input
+                type="text"
+                value={settings.color_primario}
+                onChange={e => setSettings({ ...settings, color_primario: e.target.value })}
+                className="flex-1 border border-border rounded-lg px-3 py-2 text-sm bg-white font-mono focus:outline-none focus:border-green-primary"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-text-secondary mb-1">Color de acento</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={settings.color_acento}
+                onChange={e => setSettings({ ...settings, color_acento: e.target.value })}
+                className="w-12 h-10 border border-border rounded-lg cursor-pointer"
+              />
+              <input
+                type="text"
+                value={settings.color_acento}
+                onChange={e => setSettings({ ...settings, color_acento: e.target.value })}
+                className="flex-1 border border-border rounded-lg px-3 py-2 text-sm bg-white font-mono focus:outline-none focus:border-green-primary"
+              />
+            </div>
+          </div>
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-medium text-text-secondary mb-1">URL del logo (opcional)</label>
+            <input
+              type="url"
+              value={settings.logo_url || ''}
+              onChange={e => setSettings({ ...settings, logo_url: e.target.value || null })}
+              placeholder="https://..."
+              className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-green-primary"
+            />
+            <p className="text-xs text-text-muted mt-1">TODO: upload a Supabase Storage en lugar de URL manual (Fase 2).</p>
+          </div>
+        </div>
+      </section>
+
+      <button
+        type="submit"
+        disabled={saving}
+        className="px-5 py-2.5 bg-green-primary hover:bg-green-dark text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+      >
+        {saving ? 'Guardando...' : 'Guardar cambios'}
+      </button>
+    </form>
+  )
+}
+
+// ============================================
+// Sedes tab — CRUD
+// ============================================
+function SedesTab() {
+  const supabase = createClient()
   const [sedes, setSedes] = useState<Sede[]>([])
   const [loading, setLoading] = useState(true)
-  const [showCreateModal, setShowCreateModal] = useState(false)
-  const [editingUser, setEditingUser] = useState<UserWithSede | null>(null)
-  const [resetPasswordUser, setResetPasswordUser] = useState<UserWithSede | null>(null)
-  const [deleteConfirm, setDeleteConfirm] = useState<UserWithSede | null>(null)
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
-
-  const supabase = createClient()
-
-  const fetchUsers = useCallback(async () => {
-    try {
-      const res = await fetch('/api/admin/users')
-      const data = await res.json()
-      if (res.ok) {
-        setUsers(data.users || [])
-      }
-    } catch (err) {
-      console.error('Error fetching users:', err)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  const [showForm, setShowForm] = useState(false)
+  const [editing, setEditing] = useState<Sede | null>(null)
+  const [form, setForm] = useState({ nombre: '', direccion: '', activa: true })
+  const [saving, setSaving] = useState(false)
 
   const fetchSedes = useCallback(async () => {
-    const { data } = await supabase.from('sedes').select('*').eq('activa', true).order('nombre')
-    if (data) setSedes(data as unknown as Sede[])
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setLoading(true)
+    const { data } = await supabase.from('sedes').select('*').order('nombre')
+    setSedes((data as unknown as Sede[]) || [])
+    setLoading(false)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  useEffect(() => {
-    fetchUsers()
+  useEffect(() => { fetchSedes() }, [fetchSedes])
+
+  const openCreate = () => {
+    setEditing(null)
+    setForm({ nombre: '', direccion: '', activa: true })
+    setShowForm(true)
+  }
+
+  const openEdit = (s: Sede) => {
+    setEditing(s)
+    setForm({ nombre: s.nombre, direccion: s.direccion || '', activa: s.activa })
+    setShowForm(true)
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSaving(true)
+    if (editing) {
+      const { error } = await supabase.from('sedes').update({
+        nombre: form.nombre.trim(),
+        direccion: form.direccion.trim() || null,
+        activa: form.activa,
+      }).eq('id', editing.id)
+      if (error) alert('Error al guardar: ' + error.message)
+    } else {
+      const { error } = await supabase.from('sedes').insert({
+        nombre: form.nombre.trim(),
+        direccion: form.direccion.trim() || null,
+        activa: form.activa,
+      })
+      if (error) alert('Error al crear: ' + error.message)
+    }
+    setSaving(false)
+    setShowForm(false)
     fetchSedes()
-  }, [fetchUsers, fetchSedes])
-
-  const showFeedback = (type: 'success' | 'error', message: string) => {
-    setFeedback({ type, message })
-    setTimeout(() => setFeedback(null), 4000)
   }
 
-  const handleCreateUser = async (formData: { username: string; password: string; nombre: string; rol: UserRole; sede_id: string }) => {
-    const email = `${formData.username.toLowerCase().trim()}@badentalstudio.com`
-    const res = await fetch('/api/admin/users', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...formData, email }),
-    })
-    const data = await res.json()
-    if (!res.ok) {
-      showFeedback('error', data.error || 'Error al crear usuario')
-      return false
-    }
-    showFeedback('success', `Usuario ${formData.nombre} creado correctamente`)
-    setShowCreateModal(false)
-    fetchUsers()
-    return true
-  }
-
-  const handleUpdateUser = async (id: string, updates: { nombre?: string; rol?: UserRole; sede_id?: string | null }) => {
-    const res = await fetch('/api/admin/users', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, ...updates }),
-    })
-    const data = await res.json()
-    if (!res.ok) {
-      showFeedback('error', data.error || 'Error al actualizar')
-      return false
-    }
-    showFeedback('success', 'Usuario actualizado')
-    setEditingUser(null)
-    fetchUsers()
-    return true
-  }
-
-  const handleResetPassword = async (id: string, newPassword: string) => {
-    const res = await fetch('/api/admin/users', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, new_password: newPassword }),
-    })
-    const data = await res.json()
-    if (!res.ok) {
-      showFeedback('error', data.error || 'Error al cambiar contraseña')
-      return false
-    }
-    showFeedback('success', 'Contraseña actualizada')
-    setResetPasswordUser(null)
-    return true
-  }
-
-  const handleDeleteUser = async (id: string) => {
-    const res = await fetch(`/api/admin/users?id=${id}`, { method: 'DELETE' })
-    const data = await res.json()
-    if (!res.ok) {
-      showFeedback('error', data.error || 'Error al eliminar')
-      return
-    }
-    showFeedback('success', 'Usuario eliminado')
-    setDeleteConfirm(null)
-    fetchUsers()
+  const handleDelete = async (s: Sede) => {
+    if (!confirm(`¿Eliminar la sede "${s.nombre}"? Esto también afectará datos históricos que la referencien.`)) return
+    const { error } = await supabase.from('sedes').delete().eq('id', s.id)
+    if (error) alert('Error al eliminar: ' + error.message)
+    fetchSedes()
   }
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="font-display text-2xl font-semibold text-text-primary mb-1">Configuración</h1>
-          <p className="text-sm text-text-secondary">Gestión de usuarios del sistema</p>
-        </div>
+      <div className="flex items-center gap-2 mb-4">
         <button
-          onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-green-primary text-white rounded-lg text-sm font-medium hover:bg-green-600 transition-colors"
+          onClick={openCreate}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-green-primary hover:bg-green-dark text-white text-sm font-medium rounded-lg transition-colors"
         >
           <Plus size={16} />
-          Nuevo usuario
+          Nueva sede
         </button>
       </div>
 
-      {/* Feedback */}
-      {feedback && (
-        <div className={`mb-4 p-3 rounded-lg text-sm flex items-center gap-2 ${
-          feedback.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
-        }`}>
-          {feedback.type === 'success' ? <Check size={16} /> : <AlertCircle size={16} />}
-          {feedback.message}
+      {showForm && (
+        <form onSubmit={handleSubmit} className="bg-surface rounded-xl border border-border p-5 mb-6 max-w-lg">
+          <h3 className="text-sm font-semibold text-text-primary mb-4">
+            {editing ? 'Editar sede' : 'Nueva sede'}
+          </h3>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-text-secondary mb-1">Nombre *</label>
+              <input
+                type="text"
+                value={form.nombre}
+                onChange={e => setForm({ ...form, nombre: e.target.value })}
+                required
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-green-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-text-secondary mb-1">Dirección</label>
+              <input
+                type="text"
+                value={form.direccion}
+                onChange={e => setForm({ ...form, direccion: e.target.value })}
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-green-primary"
+              />
+            </div>
+            <label className="flex items-center gap-2 text-sm text-text-secondary cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.activa}
+                onChange={e => setForm({ ...form, activa: e.target.checked })}
+                className="rounded border-border"
+              />
+              Activa
+            </label>
+          </div>
+          <div className="flex items-center gap-2 mt-4">
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-4 py-2 bg-green-primary hover:bg-green-dark text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+            >
+              {saving ? 'Guardando...' : 'Guardar'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowForm(false)}
+              className="px-4 py-2 border border-border text-text-secondary text-sm font-medium rounded-lg hover:bg-beige transition-colors"
+            >
+              Cancelar
+            </button>
+          </div>
+        </form>
+      )}
+
+      <div className="bg-surface rounded-xl border border-border overflow-hidden">
+        {loading ? (
+          <div className="p-8 text-center text-text-muted text-sm">Cargando...</div>
+        ) : sedes.length === 0 ? (
+          <div className="p-8 text-center text-text-muted text-sm">Todavía no cargaste sedes.</div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-beige/50">
+                <th className="text-left px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide">Nombre</th>
+                <th className="text-left px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide hidden sm:table-cell">Dirección</th>
+                <th className="text-left px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide">Estado</th>
+                <th className="text-center px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide w-24">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sedes.map(s => (
+                <tr key={s.id} className="border-b border-border-light hover:bg-beige/30 transition-colors">
+                  <td className="px-4 py-3 text-text-primary font-medium">{s.nombre}</td>
+                  <td className="px-4 py-3 text-text-secondary hidden sm:table-cell">{s.direccion || '—'}</td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${s.activa ? 'bg-green-light text-green-primary' : 'bg-gray-100 text-text-muted'}`}>
+                      {s.activa ? 'Activa' : 'Inactiva'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      <button onClick={() => openEdit(s)} className="p-1.5 text-text-muted hover:text-text-primary transition-colors" title="Editar">
+                        <Pencil size={14} />
+                      </button>
+                      <button onClick={() => handleDelete(s)} className="p-1.5 text-text-muted hover:text-red transition-colors" title="Eliminar">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ============================================
+// Equipo tab — invitaciones (sin email, link manual)
+// ============================================
+interface InvitationWithRole extends Invitation {
+  roles?: { nombre: string } | null
+}
+
+function EquipoTab() {
+  const supabase = createClient()
+  const { user } = useAuth()
+  const [miembros, setMiembros] = useState<{ id: string; nombre: string; email: string; rol: string; activo: boolean }[]>([])
+  const [invitaciones, setInvitaciones] = useState<InvitationWithRole[]>([])
+  const [roles, setRoles] = useState<{ id: string; nombre: string }[]>([])
+  const [loading, setLoading] = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState({ email: '', role_id: '' })
+  const [saving, setSaving] = useState(false)
+  const [newLink, setNewLink] = useState<string | null>(null)
+
+  const origin = typeof window !== 'undefined' ? window.location.origin : ''
+
+  const fetchAll = useCallback(async () => {
+    setLoading(true)
+    const [miembrosRes, invRes, rolesRes] = await Promise.all([
+      supabase.from('clinic_users').select('id, nombre, email, activo, role_id').order('nombre'),
+      supabase.from('invitations').select('*, roles(nombre)').in('status', ['pending']).order('created_at', { ascending: false }),
+      supabase.from('roles').select('id, nombre').order('nombre'),
+    ])
+    const rolesList = (rolesRes.data as unknown as { id: string; nombre: string }[]) || []
+    setRoles(rolesList)
+    const roleById = Object.fromEntries(rolesList.map(r => [r.id, r.nombre]))
+    setMiembros(((miembrosRes.data as unknown as { id: string; nombre: string; email: string; activo: boolean; role_id: string }[]) || []).map(m => ({
+      id: m.id, nombre: m.nombre, email: m.email, activo: m.activo, rol: roleById[m.role_id] || '—',
+    })))
+    setInvitaciones((invRes.data as unknown as InvitationWithRole[]) || [])
+    setLoading(false)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => { fetchAll() }, [fetchAll])
+
+  const defaultRoleId = useMemo(() => {
+    const empleado = roles.find(r => r.nombre.toLowerCase() === 'empleado')
+    return empleado?.id || roles[0]?.id || ''
+  }, [roles])
+
+  useEffect(() => {
+    if (!form.role_id && defaultRoleId) setForm(f => ({ ...f, role_id: defaultRoleId }))
+  }, [defaultRoleId, form.role_id])
+
+  const handleInvite = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!form.email || !form.role_id || !user?.clinic_id) return
+    setSaving(true)
+    setNewLink(null)
+    const { data, error } = await supabase
+      .from('invitations')
+      .insert({
+        email: form.email.trim().toLowerCase(),
+        role_id: form.role_id,
+        invited_by: user.id,
+      })
+      .select('token')
+      .single()
+    setSaving(false)
+    if (error) {
+      alert('Error al crear la invitación: ' + error.message)
+      return
+    }
+    const token = (data as unknown as { token: string }).token
+    setNewLink(`${origin}/invite/${token}`)
+    setForm({ email: '', role_id: defaultRoleId })
+    setShowForm(false)
+    fetchAll()
+  }
+
+  const revokeInvite = async (inv: Invitation) => {
+    if (!confirm(`¿Revocar la invitación a ${inv.email}?`)) return
+    await supabase.from('invitations').update({ status: 'revoked' }).eq('id', inv.id)
+    fetchAll()
+  }
+
+  const copyLink = (token: string) => {
+    const link = `${origin}/invite/${token}`
+    navigator.clipboard?.writeText(link).then(() => {
+      setNewLink(link)
+      setTimeout(() => setNewLink(null), 2500)
+    })
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setShowForm(!showForm)}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-green-primary hover:bg-green-dark text-white text-sm font-medium rounded-lg transition-colors"
+        >
+          {showForm ? <X size={16} /> : <Plus size={16} />}
+          {showForm ? 'Cancelar' : 'Invitar miembro'}
+        </button>
+      </div>
+
+      {showForm && (
+        <form onSubmit={handleInvite} className="bg-surface rounded-xl border border-border p-5 max-w-lg">
+          <h3 className="text-sm font-semibold text-text-primary mb-4">Nueva invitación</h3>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-text-secondary mb-1">Email *</label>
+              <input
+                type="email"
+                value={form.email}
+                onChange={e => setForm({ ...form, email: e.target.value })}
+                required
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-green-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-text-secondary mb-1">Rol *</label>
+              <select
+                value={form.role_id}
+                onChange={e => setForm({ ...form, role_id: e.target.value })}
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-green-primary"
+                required
+              >
+                {roles.map(r => (
+                  <option key={r.id} value={r.id}>{r.nombre}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <button
+            type="submit"
+            disabled={saving}
+            className="mt-4 px-4 py-2 bg-green-primary hover:bg-green-dark text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+          >
+            {saving ? 'Creando...' : 'Crear link de invitación'}
+          </button>
+          <p className="text-xs text-text-muted mt-2">
+            Se genera un link único. Copialo y envialo a la persona por email o WhatsApp.
+            TODO: envío automático por email en Fase 2.
+          </p>
+        </form>
+      )}
+
+      {newLink && (
+        <div className="bg-blue-light border border-blue/20 rounded-lg p-4 flex items-start gap-3">
+          <LinkIcon size={16} className="text-blue shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-text-primary mb-1">Link de invitación listo</p>
+            <p className="text-xs font-mono text-text-secondary break-all">{newLink}</p>
+          </div>
+          <button
+            onClick={() => navigator.clipboard?.writeText(newLink)}
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs bg-white border border-border rounded hover:bg-beige transition-colors"
+          >
+            <Copy size={12} />
+            Copiar
+          </button>
         </div>
       )}
 
-      {/* Users table */}
-      <div className="bg-surface rounded-xl border border-border overflow-hidden">
-        {loading ? (
-          <div className="p-8 text-center text-text-muted">Cargando usuarios...</div>
-        ) : users.length === 0 ? (
-          <div className="p-8 text-center text-text-muted">No hay usuarios registrados</div>
-        ) : (
-          <div className="overflow-x-auto">
+      {/* Miembros */}
+      <section>
+        <h2 className="text-sm font-semibold text-text-primary mb-3">Miembros</h2>
+        <div className="bg-surface rounded-xl border border-border overflow-hidden">
+          {loading ? (
+            <div className="p-8 text-center text-text-muted text-sm">Cargando...</div>
+          ) : miembros.length === 0 ? (
+            <div className="p-8 text-center text-text-muted text-sm">Solo vos.</div>
+          ) : (
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-beige/50">
-                  <th className="text-left px-4 py-3 font-medium text-text-secondary">Nombre</th>
-                  <th className="text-left px-4 py-3 font-medium text-text-secondary">Usuario</th>
-                  <th className="text-left px-4 py-3 font-medium text-text-secondary">Clave</th>
-                  <th className="text-left px-4 py-3 font-medium text-text-secondary">Rol</th>
-                  <th className="text-left px-4 py-3 font-medium text-text-secondary">Sede</th>
-                  <th className="text-right px-4 py-3 font-medium text-text-secondary">Acciones</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide">Nombre</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide hidden sm:table-cell">Email</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide">Rol</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide">Estado</th>
                 </tr>
               </thead>
               <tbody>
-                {users.map(u => (
-                  <tr key={u.id} className="border-b border-border last:border-0 hover:bg-beige/30 transition-colors">
-                    <td className="px-4 py-3 font-medium text-text-primary">{u.nombre}</td>
-                    <td className="px-4 py-3 text-text-secondary font-mono text-xs">{u.email.replace('@badentalstudio.com', '')}</td>
+                {miembros.map(m => (
+                  <tr key={m.id} className="border-b border-border-light hover:bg-beige/30 transition-colors">
+                    <td className="px-4 py-3 text-text-primary font-medium">{m.nombre}</td>
+                    <td className="px-4 py-3 text-text-secondary hidden sm:table-cell">{m.email}</td>
+                    <td className="px-4 py-3 text-text-secondary">{m.rol}</td>
                     <td className="px-4 py-3">
-                      {u.current_password ? (
-                        <PasswordCell password={u.current_password} pendingChange={u.must_change_password} />
-                      ) : (
-                        <span className="text-xs text-text-muted italic">Personalizada</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${ROLE_COLORS[u.rol]}`}>
-                        <Shield size={12} />
-                        {ROLE_LABELS[u.rol]}
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${m.activo ? 'bg-green-light text-green-primary' : 'bg-gray-100 text-text-muted'}`}>
+                        {m.activo ? 'Activo' : 'Inactivo'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-text-secondary">
-                      {u.sede?.nombre ? (
-                        <span className="flex items-center gap-1">
-                          <MapPin size={12} className="text-text-muted" />
-                          {u.sede.nombre}
-                        </span>
-                      ) : (
-                        <span className="text-text-muted">—</span>
-                      )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </section>
+
+      {/* Invitaciones pendientes */}
+      <section>
+        <h2 className="text-sm font-semibold text-text-primary mb-3">Invitaciones pendientes</h2>
+        <div className="bg-surface rounded-xl border border-border overflow-hidden">
+          {invitaciones.length === 0 ? (
+            <div className="p-8 text-center text-text-muted text-sm">No hay invitaciones pendientes.</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-beige/50">
+                  <th className="text-left px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide">Email</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide hidden sm:table-cell">Rol</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide hidden sm:table-cell">Vence</th>
+                  <th className="text-center px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide w-32">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {invitaciones.map(inv => (
+                  <tr key={inv.id} className="border-b border-border-light hover:bg-beige/30 transition-colors">
+                    <td className="px-4 py-3 text-text-primary font-medium">{inv.email}</td>
+                    <td className="px-4 py-3 text-text-secondary hidden sm:table-cell">{inv.roles?.nombre || '—'}</td>
+                    <td className="px-4 py-3 text-text-secondary hidden sm:table-cell text-xs">
+                      {new Date(inv.expires_at).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })}
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => setEditingUser(u)}
-                          className="p-1.5 rounded-md text-text-muted hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                          title="Editar"
-                        >
-                          <Pencil size={15} />
+                    <td className="px-4 py-3 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <button onClick={() => copyLink(inv.token)} className="p-1.5 text-text-muted hover:text-text-primary transition-colors" title="Copiar link">
+                          <Copy size={14} />
                         </button>
-                        <button
-                          onClick={() => setResetPasswordUser(u)}
-                          className="p-1.5 rounded-md text-text-muted hover:text-amber-600 hover:bg-amber-50 transition-colors"
-                          title="Cambiar contraseña"
-                        >
-                          <KeyRound size={15} />
-                        </button>
-                        <button
-                          onClick={() => setDeleteConfirm(u)}
-                          className="p-1.5 rounded-md text-text-muted hover:text-red-600 hover:bg-red-50 transition-colors"
-                          title="Eliminar"
-                        >
-                          <Trash2 size={15} />
+                        <button onClick={() => revokeInvite(inv)} className="p-1.5 text-text-muted hover:text-red transition-colors" title="Revocar">
+                          <Trash2 size={14} />
                         </button>
                       </div>
                     </td>
@@ -255,526 +627,9 @@ export default function ConfiguracionClient() {
                 ))}
               </tbody>
             </table>
-          </div>
-        )}
-      </div>
-
-      {/* Summary */}
-      <div className="mt-4 flex gap-3 flex-wrap">
-        {(['admin', 'rolA', 'rolB', 'rolC', 'rolD'] as UserRole[]).map(rol => {
-          const count = users.filter(u => u.rol === rol).length
-          if (count === 0) return null
-          return (
-            <div key={rol} className="flex items-center gap-2 text-xs text-text-secondary">
-              <span className={`inline-block w-2 h-2 rounded-full ${
-                rol === 'admin' ? 'bg-purple-500' : rol === 'rolA' ? 'bg-blue-500' : rol === 'rolB' ? 'bg-amber-500' : rol === 'rolC' ? 'bg-green-500' : 'bg-pink-500'
-              }`} />
-              {count} {ROLE_LABELS[rol]}{count > 1 ? 's' : ''}
-            </div>
-          )
-        })}
-      </div>
-
-      {/* Horas Config */}
-      <HorasConfigSection />
-
-      {/* Create Modal */}
-      {showCreateModal && (
-        <CreateUserModal
-          sedes={sedes}
-          onClose={() => setShowCreateModal(false)}
-          onCreate={handleCreateUser}
-        />
-      )}
-
-      {/* Edit Modal */}
-      {editingUser && (
-        <EditUserModal
-          user={editingUser}
-          sedes={sedes}
-          onClose={() => setEditingUser(null)}
-          onSave={handleUpdateUser}
-        />
-      )}
-
-      {/* Reset Password Modal */}
-      {resetPasswordUser && (
-        <ResetPasswordModal
-          user={resetPasswordUser}
-          onClose={() => setResetPasswordUser(null)}
-          onReset={handleResetPassword}
-        />
-      )}
-
-      {/* Delete Confirm */}
-      {deleteConfirm && (
-        <DeleteConfirmModal
-          user={deleteConfirm}
-          onClose={() => setDeleteConfirm(null)}
-          onDelete={handleDeleteUser}
-        />
-      )}
-    </div>
-  )
-}
-
-// --- Modals ---
-
-function CreateUserModal({ sedes, onClose, onCreate }: {
-  sedes: Sede[]
-  onClose: () => void
-  onCreate: (data: { username: string; password: string; nombre: string; rol: UserRole; sede_id: string }) => Promise<boolean>
-}) {
-  const [form, setForm] = useState({ username: '', password: 'BadentalStudio', nombre: '', rol: 'rolC' as UserRole, sede_id: '' })
-  const [showPass, setShowPass] = useState(false)
-  const [saving, setSaving] = useState(false)
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setSaving(true)
-    try {
-      await onCreate(form)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <ModalOverlay onClose={onClose}>
-      <h2 className="text-lg font-semibold text-text-primary mb-4 flex items-center gap-2">
-        <Users size={20} />
-        Nuevo usuario
-      </h2>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-text-secondary mb-1">Nombre</label>
-          <input
-            type="text"
-            required
-            value={form.nombre}
-            onChange={e => setForm({ ...form, nombre: e.target.value })}
-            className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-white focus:ring-2 focus:ring-green-primary/20 focus:border-green-primary outline-none"
-            placeholder="Nombre completo"
-          />
+          )}
         </div>
-        <div>
-          <label className="block text-sm font-medium text-text-secondary mb-1">Usuario</label>
-          <input
-            type="text"
-            required
-            value={form.username}
-            onChange={e => setForm({ ...form, username: e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, '') })}
-            className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-white focus:ring-2 focus:ring-green-primary/20 focus:border-green-primary outline-none font-mono"
-            placeholder="ej: lreartes"
-            autoCapitalize="none"
-            autoCorrect="off"
-          />
-          <p className="text-xs text-text-muted mt-1">Sin espacios ni caracteres especiales</p>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-text-secondary mb-1">Contraseña</label>
-          <div className="relative">
-            <input
-              type={showPass ? 'text' : 'password'}
-              required
-              minLength={6}
-              value={form.password}
-              onChange={e => setForm({ ...form, password: e.target.value })}
-              className="w-full px-3 py-2 pr-10 border border-border rounded-lg text-sm bg-white focus:ring-2 focus:ring-green-primary/20 focus:border-green-primary outline-none"
-              placeholder="Mínimo 6 caracteres"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPass(!showPass)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary"
-            >
-              {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
-            </button>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1">Rol</label>
-            <select
-              value={form.rol}
-              onChange={e => setForm({ ...form, rol: e.target.value as UserRole })}
-              className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-white focus:ring-2 focus:ring-green-primary/20 focus:border-green-primary outline-none"
-            >
-              {Object.entries(ROLE_LABELS).map(([key, label]) => (
-                <option key={key} value={key}>{label}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1">Sede</label>
-            <select
-              value={form.sede_id}
-              onChange={e => setForm({ ...form, sede_id: e.target.value })}
-              className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-white focus:ring-2 focus:ring-green-primary/20 focus:border-green-primary outline-none"
-            >
-              <option value="">Sin sede (todas)</option>
-              {sedes.map(s => (
-                <option key={s.id} value={s.id}>{s.nombre}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <div className="flex justify-end gap-2 pt-2">
-          <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-text-secondary hover:text-text-primary transition-colors">
-            Cancelar
-          </button>
-          <button
-            type="submit"
-            disabled={saving}
-            className="px-4 py-2 bg-green-primary text-white rounded-lg text-sm font-medium hover:bg-green-600 transition-colors disabled:opacity-50"
-          >
-            {saving ? 'Creando...' : 'Crear usuario'}
-          </button>
-        </div>
-      </form>
-    </ModalOverlay>
-  )
-}
-
-function EditUserModal({ user, sedes, onClose, onSave }: {
-  user: UserWithSede
-  sedes: Sede[]
-  onClose: () => void
-  onSave: (id: string, updates: { nombre?: string; rol?: UserRole; sede_id?: string | null }) => Promise<boolean>
-}) {
-  const [form, setForm] = useState({ nombre: user.nombre, rol: user.rol as UserRole, sede_id: user.sede_id || '' })
-  const [saving, setSaving] = useState(false)
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setSaving(true)
-    try {
-      await onSave(user.id, {
-        nombre: form.nombre,
-        rol: form.rol,
-        sede_id: form.sede_id || null,
-      })
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <ModalOverlay onClose={onClose}>
-      <h2 className="text-lg font-semibold text-text-primary mb-4 flex items-center gap-2">
-        <Pencil size={20} />
-        Editar usuario
-      </h2>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-text-secondary mb-1">Nombre</label>
-          <input
-            type="text"
-            required
-            value={form.nombre}
-            onChange={e => setForm({ ...form, nombre: e.target.value })}
-            className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-white focus:ring-2 focus:ring-green-primary/20 focus:border-green-primary outline-none"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-text-secondary mb-1">Email</label>
-          <input
-            type="email"
-            disabled
-            value={user.email}
-            className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-gray-50 text-text-muted cursor-not-allowed"
-          />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1">Rol</label>
-            <select
-              value={form.rol}
-              onChange={e => setForm({ ...form, rol: e.target.value as UserRole })}
-              className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-white focus:ring-2 focus:ring-green-primary/20 focus:border-green-primary outline-none"
-            >
-              {Object.entries(ROLE_LABELS).map(([key, label]) => (
-                <option key={key} value={key}>{label}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1">Sede</label>
-            <select
-              value={form.sede_id}
-              onChange={e => setForm({ ...form, sede_id: e.target.value })}
-              className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-white focus:ring-2 focus:ring-green-primary/20 focus:border-green-primary outline-none"
-            >
-              <option value="">Sin sede (todas)</option>
-              {sedes.map(s => (
-                <option key={s.id} value={s.id}>{s.nombre}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <div className="flex justify-end gap-2 pt-2">
-          <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-text-secondary hover:text-text-primary transition-colors">
-            Cancelar
-          </button>
-          <button
-            type="submit"
-            disabled={saving}
-            className="px-4 py-2 bg-green-primary text-white rounded-lg text-sm font-medium hover:bg-green-600 transition-colors disabled:opacity-50"
-          >
-            {saving ? 'Guardando...' : 'Guardar cambios'}
-          </button>
-        </div>
-      </form>
-    </ModalOverlay>
-  )
-}
-
-function ResetPasswordModal({ user, onClose, onReset }: {
-  user: UserWithSede
-  onClose: () => void
-  onReset: (id: string, password: string) => Promise<boolean>
-}) {
-  const [password, setPassword] = useState('')
-  const [showPass, setShowPass] = useState(false)
-  const [saving, setSaving] = useState(false)
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setSaving(true)
-    try {
-      await onReset(user.id, password)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <ModalOverlay onClose={onClose}>
-      <h2 className="text-lg font-semibold text-text-primary mb-2 flex items-center gap-2">
-        <KeyRound size={20} />
-        Cambiar contraseña
-      </h2>
-      <p className="text-sm text-text-secondary mb-4">
-        Nueva contraseña para <strong>{user.nombre}</strong>
-      </p>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-text-secondary mb-1">Nueva contraseña</label>
-          <div className="relative">
-            <input
-              type={showPass ? 'text' : 'password'}
-              required
-              minLength={6}
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              className="w-full px-3 py-2 pr-10 border border-border rounded-lg text-sm bg-white focus:ring-2 focus:ring-green-primary/20 focus:border-green-primary outline-none"
-              placeholder="Mínimo 6 caracteres"
-              autoFocus
-            />
-            <button
-              type="button"
-              onClick={() => setShowPass(!showPass)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary"
-            >
-              {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
-            </button>
-          </div>
-        </div>
-        <div className="flex justify-end gap-2 pt-2">
-          <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-text-secondary hover:text-text-primary transition-colors">
-            Cancelar
-          </button>
-          <button
-            type="submit"
-            disabled={saving}
-            className="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors disabled:opacity-50"
-          >
-            {saving ? 'Cambiando...' : 'Cambiar contraseña'}
-          </button>
-        </div>
-      </form>
-    </ModalOverlay>
-  )
-}
-
-function DeleteConfirmModal({ user, onClose, onDelete }: {
-  user: UserWithSede
-  onClose: () => void
-  onDelete: (id: string) => Promise<void>
-}) {
-  const [deleting, setDeleting] = useState(false)
-
-  const handleDelete = async () => {
-    setDeleting(true)
-    try {
-      await onDelete(user.id)
-    } finally {
-      setDeleting(false)
-    }
-  }
-
-  return (
-    <ModalOverlay onClose={onClose}>
-      <h2 className="text-lg font-semibold text-red-600 mb-2 flex items-center gap-2">
-        <Trash2 size={20} />
-        Eliminar usuario
-      </h2>
-      <p className="text-sm text-text-secondary mb-1">
-        ¿Estás seguro de que querés eliminar a <strong>{user.nombre}</strong>?
-      </p>
-      <p className="text-xs text-text-muted mb-4">
-        Se eliminará el acceso al sistema. Esta acción no se puede deshacer.
-      </p>
-      <div className="flex justify-end gap-2">
-        <button onClick={onClose} className="px-4 py-2 text-sm text-text-secondary hover:text-text-primary transition-colors">
-          Cancelar
-        </button>
-        <button
-          onClick={handleDelete}
-          disabled={deleting}
-          className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors disabled:opacity-50"
-        >
-          {deleting ? 'Eliminando...' : 'Eliminar'}
-        </button>
-      </div>
-    </ModalOverlay>
-  )
-}
-
-function HorasConfigSection() {
-  const supabase = createClient()
-  const [config, setConfig] = useState({ hourly_rate: 8000, sunday_multiplier: 2 })
-  const [rate, setRate] = useState('8000')
-  const [mult, setMult] = useState('2')
-  const [saving, setSaving] = useState(false)
-
-  const fetchConfig = useCallback(async () => {
-    try {
-      const { data } = await supabase.from('config').select('key, value')
-      if (data) {
-        const rows = data as unknown as { key: string; value: string }[]
-        const cfg: Record<string, string> = {}
-        rows.forEach((d) => { cfg[d.key] = d.value })
-        const c = {
-          hourly_rate: Number(cfg.hourly_rate) || 8000,
-          sunday_multiplier: Number(cfg.sunday_multiplier) || 2,
-        }
-        setConfig(c)
-        setRate(String(c.hourly_rate))
-        setMult(String(c.sunday_multiplier))
-      }
-    } catch (err) {
-      console.error('Error fetching config:', err)
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  useEffect(() => { fetchConfig() }, [fetchConfig])
-
-  const saveConfig = async (key: string, value: string) => {
-    setSaving(true)
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (supabase.from('config') as any)
-        .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' })
-      fetchConfig()
-    } catch (err) {
-      console.error('Error updating config:', err)
-    }
-    setSaving(false)
-  }
-
-  return (
-    <div className="mt-8">
-      <h2 className="text-lg font-semibold text-text-primary mb-4 flex items-center gap-2">
-        <Clock size={20} />
-        Configuración de Horas
-      </h2>
-      <div className="bg-surface rounded-xl border border-border p-5">
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex items-center gap-2">
-            <DollarSign size={16} className="text-text-muted" />
-            <label className="text-sm text-text-secondary">Valor hora ($)</label>
-            <input
-              type="number"
-              value={rate}
-              onChange={(e) => setRate(e.target.value)}
-              min="0"
-              step="100"
-              className="w-28 px-3 py-1.5 text-sm border border-border rounded-lg bg-white text-text-primary focus:outline-none focus:border-green-primary"
-            />
-            <button
-              onClick={() => saveConfig('hourly_rate', rate)}
-              disabled={saving}
-              className="text-xs font-medium px-3 py-1.5 border border-border rounded-lg hover:bg-beige transition-colors disabled:opacity-50"
-            >
-              Guardar
-            </button>
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-sm text-text-secondary">Multiplicador dom/fer.</label>
-            <input
-              type="number"
-              value={mult}
-              onChange={(e) => setMult(e.target.value)}
-              min="1"
-              max="3"
-              step="0.5"
-              className="w-28 px-3 py-1.5 text-sm border border-border rounded-lg bg-white text-text-primary focus:outline-none focus:border-green-primary"
-            />
-            <button
-              onClick={() => saveConfig('sunday_multiplier', mult)}
-              disabled={saving}
-              className="text-xs font-medium px-3 py-1.5 border border-border rounded-lg hover:bg-beige transition-colors disabled:opacity-50"
-            >
-              Guardar
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function PasswordCell({ password, pendingChange }: { password: string; pendingChange?: boolean }) {
-  const [visible, setVisible] = useState(false)
-
-  return (
-    <div className="flex items-center gap-1.5">
-      <span className="font-mono text-xs text-text-secondary min-w-[80px]">
-        {visible ? password : '••••••••'}
-      </span>
-      <button
-        onClick={() => setVisible(!visible)}
-        className="p-0.5 text-text-muted hover:text-text-primary transition-colors"
-        title={visible ? 'Ocultar' : 'Mostrar'}
-      >
-        {visible ? <EyeOff size={13} /> : <Eye size={13} />}
-      </button>
-      {pendingChange && (
-        <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full font-medium">
-          Pendiente
-        </span>
-      )}
-    </div>
-  )
-}
-
-function ModalOverlay({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div
-        className="bg-white rounded-xl border border-border p-6 w-full max-w-md shadow-lg relative"
-        onClick={e => e.stopPropagation()}
-      >
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-text-muted hover:text-text-primary transition-colors"
-        >
-          <X size={18} />
-        </button>
-        {children}
-      </div>
+      </section>
     </div>
   )
 }

@@ -118,7 +118,6 @@ export interface User {
   rol: UserRole
   sede_id: string | null
   clinic_id?: string
-  must_change_password?: boolean
   created_at: string
 }
 
