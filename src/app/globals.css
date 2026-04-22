@@ -7,16 +7,19 @@
  * Si en el futuro querés renombrar los tokens, es un find-replace global.
  */
 @theme inline {
-  /* Azul principal (antes green-primary) */
-  --color-green-primary: #2563eb;   /* blue-600 */
-  --color-green-dark: #1d4ed8;      /* blue-700 */
+  /* White-label: los tokens primary y accent delegan a CSS vars
+   * --clinic-primary / --clinic-accent que setea el DashboardLayout desde
+   * clinic_settings. Si no están definidas (login, signup, invite), cae
+   * al default azul/celeste. Los *-dark se derivan con color-mix. */
+  --color-green-primary: var(--clinic-primary, #2563eb);   /* blue-600 */
+  --color-green-dark: color-mix(in srgb, var(--clinic-primary, #2563eb) 82%, black);
   --color-green-light: #dbeafe;     /* blue-100 */
   --color-green-50: #eff6ff;        /* blue-50 */
 
-  /* Celeste accent (antes gold) */
-  --color-gold: #0ea5e9;            /* sky-500 */
+  /* Celeste accent */
+  --color-gold: var(--clinic-accent, #0ea5e9);            /* sky-500 */
   --color-gold-light: #e0f2fe;      /* sky-100 */
-  --color-gold-dark: #0284c7;       /* sky-600 */
+  --color-gold-dark: color-mix(in srgb, var(--clinic-accent, #0ea5e9) 82%, black);
 
   /* Fondo claro (antes beige) */
   --color-beige: #f8fafc;           /* slate-50 */
