@@ -281,3 +281,21 @@ export interface LaboratorioHistorial {
   user_id: string | null
   created_at: string
 }
+
+export interface Paciente {
+  id: string
+  clinic_id?: string
+  sede_id: string | null
+  nombre: string
+  apellido: string | null
+  dni: string | null
+  fecha_nacimiento: string | null
+  telefono: string | null
+  email: string | null
+  obra_social: string | null
+  notas: string | null
+  created_at: string
+  updated_at: string
+  // joins
+  sede?: Sede
+}

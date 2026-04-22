@@ -57,6 +57,13 @@ export const PERMISSION_GROUPS = {
       { key: 'laboratorio.manage', label: 'Gestionar casos' },
     ],
   },
+  pacientes: {
+    label: 'Pacientes',
+    perms: [
+      { key: 'pacientes.view', label: 'Ver' },
+      { key: 'pacientes.manage', label: 'Gestionar fichas' },
+    ],
+  },
   settings: {
     label: 'Configuración',
     perms: [

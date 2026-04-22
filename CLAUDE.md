@@ -62,6 +62,10 @@ Stripe/Mercado Pago queda para una fase posterior.
 
 ## Catálogo de permisos (`roles.permissions`)
 
+Ver también [src/lib/permissions.ts](src/lib/permissions.ts) que es el espejo
+canónico en TypeScript, y [src/components/AuthProvider.tsx] que expone
+`useHasPermission('perm.key')` para filtrar UI.
+
 ```
 dashboard.view
 turnos.view, turnos.create, turnos.edit, turnos.delete
@@ -70,6 +74,7 @@ gastos.view, gastos.create, gastos.edit, gastos.delete
 por_cobrar.view, por_cobrar.manage
 stock.view, stock.movimientos.create, stock.productos.manage
 laboratorio.view, laboratorio.manage
+pacientes.view, pacientes.manage
 settings.clinic, settings.users, settings.roles, settings.sedes
 importar_excel
 ```
@@ -136,6 +141,13 @@ Roles con `is_system = true` (p. ej. `Admin` creado por
 - Estados: escaneado, enviada, en_proceso, retirada, colocada, a_revisar.
 - Historial de cambios de estado.
 
+### Pacientes (`/pacientes`)
+- Entidad con nombre, apellido, DNI, nacimiento, tel, email, obra social, notas.
+- CRUD + búsqueda por nombre/DNI/teléfono.
+- Vista detalle con historial unificado (turnos + cobranzas + laboratorio)
+  matcheados por nombre — TODO: agregar `patient_id` FK en cobranzas/turnos
+  cuando pase el demo para matching formal.
+
 ### Configuración (`/configuracion`)
 - Clínica, sedes, usuarios, roles (roadmap Fase 1).
 
@@ -165,29 +177,44 @@ alquiler, servicios, otros`
 `roles`, `sedes`, `clinic_users`, `invitations`, `system_admins`.
 
 **Dominio:** `turnos`, `cobranzas`, `gastos`, `deudas`, `stock_productos`,
-`stock_movimientos`, `laboratorio_casos`, `laboratorio_historial`.
+`stock_movimientos`, `laboratorio_casos`, `laboratorio_historial`, `pacientes`.
 
 ## Roadmap
 
 - [x] **Fase 0** — Fundación SaaS: schema versionado, limpieza de código
-  heredado (BA Dental, Dentalink, módulos muertos), signup self-service,
-  docs actualizados.
-- [ ] **Fase 1** — Gestión clínica: invitaciones por email, panel de roles
-  con switches, rewire módulos con `clinic_id` + `has_permission()`,
-  white-label básico (logo + colores desde Configuración), dominio
-  `app.odontogestion.com` en Vercel.
-- [ ] **Fase 2** — UX en módulos existentes: responsive mobile (<400px),
-  filtro rango de fecha en Dashboard, indicador visual stock bajo,
-  generador de pedido de reposición (copiar texto o WhatsApp wa.me).
-- [ ] **Fase 3** — Finanzas avanzadas: gastos recurrentes (`is_recurring`,
-  `recurrence_frequency`, `recurrence_day`, `parent_expense_id`, 12
-  instancias futuras al guardar), evolución anual con gráfico 12 meses,
-  selector de año, export CSV.
-- [ ] **Fase 4** — Ficha de paciente: entidad `pacientes` (nombre, apellido,
-  DNI, nacimiento, tel, email, obra social), vista unificada
-  turnos/cobranzas/tratamientos/laboratorio por `patient_id`. Widget FAQ con
-  Claude API (env `ANTHROPIC_API_KEY`, endpoint `/api/chat`, historial solo
-  en estado local).
+  heredado, signup self-service, docs.
+- [x] **Fase 1** — Gestión clínica: invitaciones por link manual,
+  panel de roles con switches, permisos reales
+  (`hasPermission()`/`useHasPermission`), white-label básico (colores
+  + logo URL en `clinic_settings`, CSS vars expuestas en el layout).
+- [x] **Fase 2** — UX: filtro rango de fecha en Dashboard (Hoy/7d/Mes/
+  Año/Rango), generador de pedido de reposición en Stock (copiar texto
+  o WhatsApp wa.me) con cantidades sugeridas, indicador visual stock bajo.
+- [x] **Fase 3** — Finanzas avanzadas: gastos recurrentes
+  (`is_recurring`, `recurrence_frequency`, `parent_expense_id`, RPC
+  `generate_recurring_expense_instances`), export CSV de cobranzas/gastos.
+- [x] **Fase 4** — Ficha de paciente: entidad `pacientes` con CRUD +
+  búsqueda + vista detalle con historial unificado
+  (turnos/cobranzas/laboratorio por match de nombre).
+
+### Pendientes / siguientes pasos
+
+- [ ] Envío automático de emails de invitación (Supabase `inviteUserByEmail`
+  o Resend). Hoy solo link manual.
+- [ ] Responsive mobile (<400px) — audit completo de todas las vistas.
+- [ ] Evolución anual con gráfico 12 meses + selector de año (se puede
+  hacer con el rango custom del Dashboard si se extiende).
+- [ ] Cablear Tailwind a las CSS vars `--clinic-primary` / `--clinic-accent`
+  para que el tema se aplique a botones/badges (infra lista, falta
+  reemplazar `bg-green-primary` → `bg-clinic-primary`).
+- [ ] Upload de logo a Supabase Storage (hoy es URL manual).
+- [ ] Agregar FK `patient_id` en cobranzas/turnos/laboratorio para
+  matching formal (hoy la vista unificada matchea por nombre).
+- [ ] Widget FAQ con Claude API (env `ANTHROPIC_API_KEY`,
+  endpoint `/api/chat`).
+- [ ] Dominio `app.odontogestion.com` en Vercel.
+- [ ] Multi-sede real en cobranzas/gastos (hoy sede_id singular; si el
+  usuario elige varias sedes en el form, solo guarda la primera).
 
 ## Convenciones para cambios
 
