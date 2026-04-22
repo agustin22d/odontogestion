@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { useAuth } from '@/components/AuthProvider'
 import {
   DollarSign,
   CalendarDays,
@@ -19,8 +18,6 @@ import {
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import type { Sede } from '@/types/database'
 import { getArgentinaToday, getArgentinaDate, formatFechaHoyAR } from '@/lib/utils/dates'
-import EmpleadoDashboard from '@/components/empleados/EmpleadoDashboard'
-import SyncButton from '@/components/SyncButton'
 
 interface TurnoStats {
   total: number
@@ -45,30 +42,10 @@ interface CobranzaStats {
 }
 
 export default function DashboardPage() {
-  const { user } = useAuth()
-  const isAdmin = user?.rol === 'admin'
-
-  if (!isAdmin) {
-    return <EmpleadoDashboardWrapper />
-  }
-
   return <AdminDashboard />
 }
 
-function EmpleadoDashboardWrapper() {
-  return (
-    <div>
-      <div className="mb-6">
-        <h1 className="font-display text-2xl font-semibold text-text-primary mb-1">Mi Panel</h1>
-        <p className="text-sm text-text-secondary">Tu resumen diario</p>
-      </div>
-      <EmpleadoDashboard />
-    </div>
-  )
-}
-
 function AdminDashboard() {
-  const { user } = useAuth()
   const supabase = createClient()
   const [sedes, setSedes] = useState<Sede[]>([])
   const [sedeFilter, setSedeFilter] = useState<string>('todas')
@@ -76,7 +53,6 @@ function AdminDashboard() {
   const [turnosPorSede, setTurnosPorSede] = useState<TurnosPorSede[]>([])
   const [cobranzaStats, setCobranzaStats] = useState<CobranzaStats>({ hoy: 0, semana: 0, mes: 0 })
   const [deudasPendientes, setDeudasPendientes] = useState(0)
-  const [tareasPendientes, setTareasPendientes] = useState(0)
   const [chartData, setChartData] = useState<{ dia: string; cobrado: number; gastos: number }[]>([])
   const [turnosDadosHoy, setTurnosDadosHoy] = useState(0)
   const [stockBajo, setStockBajo] = useState(0)
@@ -101,45 +77,30 @@ function AdminDashboard() {
       const inicioSemana = getInicioSemana()
       const inicioMes = hoy.slice(0, 7) + '-01'
 
-      // Build all queries — cobranzas/gastos fetch all, filtered client-side for multi-sede
       let turnosQuery = supabase.from('turnos').select('*, sedes(nombre)').eq('fecha', hoy)
       if (sedeFilter !== 'todas') turnosQuery = turnosQuery.eq('sede_id', sedeFilter)
 
-      const cobHoyQuery = supabase.from('cobranzas').select('monto, sede_id, sede_ids').eq('fecha', hoy)
-      const cobSemQuery = supabase.from('cobranzas').select('monto, sede_id, sede_ids').gte('fecha', inicioSemana).lte('fecha', hoy)
-      const cobMesQuery = supabase.from('cobranzas').select('monto, sede_id, sede_ids').gte('fecha', inicioMes).lte('fecha', hoy)
+      const cobHoyQuery = supabase.from('cobranzas').select('monto, sede_id').eq('fecha', hoy)
+      const cobSemQuery = supabase.from('cobranzas').select('monto, sede_id').gte('fecha', inicioSemana).lte('fecha', hoy)
+      const cobMesQuery = supabase.from('cobranzas').select('monto, sede_id').gte('fecha', inicioMes).lte('fecha', hoy)
 
       const deudasQuery = supabase.from('deudas').select('monto_total, monto_cobrado, sede_id').in('estado', ['pendiente', 'parcial'])
 
-      // Tareas: get plantillas (con rol) + completadas for today + all employees with roles
-      const plantillasQuery = supabase.from('tarea_plantillas').select('id, rol').eq('activa', true)
-      const completadasQuery = supabase.from('tarea_completadas').select('user_id, plantilla_id').eq('fecha', hoy).eq('completada', true)
-      const empleadosQuery = supabase.from('users').select('id, rol').in('rol', ['rolA', 'rolB', 'rolC', 'rolD'])
-
-      // Chart: cobranzas + gastos by day this month
-      const chartCobQuery = supabase.from('cobranzas').select('fecha, monto, sede_id, sede_ids').gte('fecha', inicioMes).lte('fecha', hoy)
-      const chartGasQuery = supabase.from('gastos').select('fecha, monto, sede_ids').gte('fecha', inicioMes).lte('fecha', hoy)
+      const chartCobQuery = supabase.from('cobranzas').select('fecha, monto, sede_id').gte('fecha', inicioMes).lte('fecha', hoy)
+      const chartGasQuery = supabase.from('gastos').select('fecha, monto, sede_id').gte('fecha', inicioMes).lte('fecha', hoy)
       const sedesQuery = supabase.from('sedes').select('*').eq('activa', true).order('nombre')
 
-      // New KPIs: turnos dados hoy (via API that triggers Dentalink sync), stock bajo, lab pendientes
-      const agendadosCtrl = new AbortController()
-      const agendadosTimeout = setTimeout(() => agendadosCtrl.abort(), 10000)
-      const turnosDadosPromise = fetch(`/api/dentalink-agendados?fecha=${hoy}`, { signal: agendadosCtrl.signal })
-        .then(r => r.ok ? r.json() : { total: 0 })
-        .catch(() => ({ total: 0 }))
-        .finally(() => clearTimeout(agendadosTimeout))
+      const turnosDadosQuery = supabase.from('turnos').select('id', { count: 'exact', head: true }).gte('created_at', hoy + 'T00:00:00').lt('created_at', hoy + 'T23:59:59.999')
       const stockProductosQuery = supabase.from('stock_productos').select('id, stock_minimo').eq('activo', true)
       const stockMovQuery = supabase.from('stock_movimientos').select('producto_id, sede_id, tipo, cantidad')
       const labQuery = supabase.from('laboratorio_casos').select('id', { count: 'exact', head: true }).in('estado', ['escaneado', 'enviada', 'en_proceso', 'a_revisar'])
-      const gastosHoyQuery = supabase.from('gastos').select('id', { count: 'exact', head: true }).eq('estado', 'pendiente').eq('fecha_vencimiento', hoy)
+      const gastosHoyQuery = supabase.from('gastos').select('id', { count: 'exact', head: true }).eq('estado_pago', 'pendiente').eq('fecha_vencimiento', hoy)
 
-      // Run ALL queries in parallel
-      const [turnosRes, cobHoyRes, cobSemRes, cobMesRes, deudasRes, plantillasRes, completadasTodayRes, empleadosRes, chartCobRes, chartGasRes, sedesRes, turnosDadosData, stockProdRes, stockMovRes, labRes, gastosHoyRes] = await Promise.all([
-        turnosQuery, cobHoyQuery, cobSemQuery, cobMesQuery, deudasQuery, plantillasQuery, completadasQuery, empleadosQuery, chartCobQuery, chartGasQuery, sedesQuery, turnosDadosPromise, stockProductosQuery, stockMovQuery, labQuery, gastosHoyQuery,
+      const [turnosRes, cobHoyRes, cobSemRes, cobMesRes, deudasRes, chartCobRes, chartGasRes, sedesRes, turnosDadosRes, stockProdRes, stockMovRes, labRes, gastosHoyRes] = await Promise.all([
+        turnosQuery, cobHoyQuery, cobSemQuery, cobMesQuery, deudasQuery, chartCobQuery, chartGasQuery, sedesQuery, turnosDadosQuery, stockProductosQuery, stockMovQuery, labQuery, gastosHoyQuery,
       ])
 
-      // Check for errors on critical queries
-      const queryResults = [turnosRes, cobHoyRes, cobSemRes, cobMesRes, deudasRes, plantillasRes, completadasTodayRes, empleadosRes, chartCobRes, chartGasRes, sedesRes, stockProdRes, stockMovRes]
+      const queryResults = [turnosRes, cobHoyRes, cobSemRes, cobMesRes, deudasRes, chartCobRes, chartGasRes, sedesRes, stockProdRes, stockMovRes]
       const errors = queryResults.map(r => r.error).filter(Boolean)
       if (errors.length > 0) {
         console.error('Dashboard query errors:', errors)
@@ -148,22 +109,16 @@ function AdminDashboard() {
 
       const allSedes = (sedesRes.data || []) as Sede[]
       if (allSedes.length > 0) setSedes(allSedes)
-      const sedesCount = allSedes.length || 1
-      const cobMonto = (c: { monto: number; sede_id?: string | null; sede_ids?: string[] }): number => {
+
+      const cobMonto = (c: { monto: number; sede_id?: string | null }): number => {
         const monto = Number(c.monto)
         if (sedeFilter === 'todas') return monto
-        const ids = (c as { sede_ids?: string[] }).sede_ids || []
-        if (ids.length > 1) return ids.includes(sedeFilter) ? monto / ids.length : 0
-        if (ids.length === 1) return ids[0] === sedeFilter ? monto : 0
-        if (c.sede_id) return c.sede_id === sedeFilter ? monto : 0
-        return monto / sedesCount
+        return c.sede_id === sedeFilter ? monto : 0
       }
-      const gasMonto = (g: { monto: number; sede_ids?: string[] }): number => {
+      const gasMonto = (g: { monto: number; sede_id?: string | null }): number => {
         const monto = Number(g.monto)
         if (sedeFilter === 'todas') return monto
-        const ids = (g as { sede_ids?: string[] }).sede_ids || []
-        if (ids.length === 0) return monto / sedesCount
-        return ids.includes(sedeFilter) ? monto / ids.length : 0
+        return g.sede_id === sedeFilter ? monto : 0
       }
 
       // Process turnos
@@ -190,11 +145,11 @@ function AdminDashboard() {
         setTurnosPorSede(Object.values(porSede).sort((a, b) => b.total - a.total))
       }
 
-      // Process cobranzas with proportional sede filtering
+      // Process cobranzas
       setCobranzaStats({
-        hoy: (cobHoyRes.data || []).reduce((sum: number, c: { monto: number; sede_id?: string | null; sede_ids?: string[] }) => sum + cobMonto(c), 0),
-        semana: (cobSemRes.data || []).reduce((sum: number, c: { monto: number; sede_id?: string | null; sede_ids?: string[] }) => sum + cobMonto(c), 0),
-        mes: (cobMesRes.data || []).reduce((sum: number, c: { monto: number; sede_id?: string | null; sede_ids?: string[] }) => sum + cobMonto(c), 0),
+        hoy: (cobHoyRes.data || []).reduce((sum: number, c: { monto: number; sede_id?: string | null }) => sum + cobMonto(c), 0),
+        semana: (cobSemRes.data || []).reduce((sum: number, c: { monto: number; sede_id?: string | null }) => sum + cobMonto(c), 0),
+        mes: (cobMesRes.data || []).reduce((sum: number, c: { monto: number; sede_id?: string | null }) => sum + cobMonto(c), 0),
       })
 
       // Process deudas
@@ -204,24 +159,10 @@ function AdminDashboard() {
         : deudasData.filter(d => d.sede_id === sedeFilter).reduce((sum, d) => sum + (Number(d.monto_total) - Number(d.monto_cobrado)), 0)
       setDeudasPendientes(totalDeudas)
 
-      // Process tareas: count pending per employee (only their rol's plantillas)
-      const plantillas = plantillasRes.data || []
-      const completadasToday = completadasTodayRes.data || []
-      const empleados = empleadosRes.data || []
-      let pendientes = 0
-      empleados.forEach((emp: { id: string; rol: string }) => {
-        const empPlantillas = plantillas.filter((p: { id: number; rol: string }) => p.rol === emp.rol)
-        const empCompletadas = completadasToday
-          .filter((c: { user_id: string; plantilla_id: number }) => c.user_id === emp.id)
-          .map((c: { plantilla_id: number }) => c.plantilla_id)
-        pendientes += empPlantillas.filter((p: { id: number }) => !empCompletadas.includes(p.id)).length
-      })
-      setTareasPendientes(pendientes)
+      // Turnos dados hoy (creados hoy en la tabla turnos)
+      setTurnosDadosHoy(turnosDadosRes.count || 0)
 
-      // Process turnos dados hoy
-      setTurnosDadosHoy(turnosDadosData?.total || 0)
-
-      // Process stock bajo: calculate stock per product-sede and count alerts
+      // Process stock bajo
       const productos = (stockProdRes.data || []) as { id: string; stock_minimo: number }[]
       const movimientos = (stockMovRes.data || []) as { producto_id: string; sede_id: string; tipo: string; cantidad: number }[]
       const stockMap: Record<string, number> = {}
@@ -239,20 +180,17 @@ function AdminDashboard() {
       }
       setStockBajo(alertCount)
 
-      // Process lab pendientes
       setLabPendientes(labRes.count || 0)
-
-      // Process gastos que vencen hoy
       setGastosVencenHoy(gastosHoyRes.count || 0)
 
-      // Process chart data with proportional sede filtering
+      // Chart
       const cobByDay: Record<string, number> = {}
       const gasByDay: Record<string, number> = {}
-      ;(chartCobRes.data || []).forEach((c: { fecha: string; monto: number; sede_id?: string | null; sede_ids?: string[] }) => {
+      ;(chartCobRes.data || []).forEach((c: { fecha: string; monto: number; sede_id?: string | null }) => {
         const m = cobMonto(c)
         if (m > 0) cobByDay[c.fecha] = (cobByDay[c.fecha] || 0) + m
       })
-      ;(chartGasRes.data || []).forEach((g: { fecha: string; monto: number; sede_ids?: string[] }) => {
+      ;(chartGasRes.data || []).forEach((g: { fecha: string; monto: number; sede_id?: string | null }) => {
         const m = gasMonto(g)
         if (m > 0) gasByDay[g.fecha] = (gasByDay[g.fecha] || 0) + m
       })
@@ -283,14 +221,6 @@ function AdminDashboard() {
     return formatFechaHoyAR()
   }
 
-  if (user?.rol !== 'admin') {
-    return (
-      <div className="bg-surface rounded-xl border border-border p-8 text-center text-text-muted">
-        El dashboard está disponible solo para administradores.
-      </div>
-    )
-  }
-
   return (
     <div>
       {/* Header */}
@@ -299,16 +229,6 @@ function AdminDashboard() {
           <h1 className="font-display text-2xl font-semibold text-text-primary mb-1">Dashboard</h1>
           <p className="text-sm text-text-secondary capitalize hidden sm:block">{formatFechaHoy()}</p>
         </div>
-        {process.env.NEXT_PUBLIC_DEMO_MODE !== 'true' && (
-          <SyncButton
-            label="Sync todo"
-            endpoints={[
-              { url: '/api/sync-dentalink', body: { dias: 7 } },
-              { url: '/api/sync-pagos', body: { dias: 7 } },
-            ]}
-            onDone={() => fetchDashboardData()}
-          />
-        )}
       </div>
 
       {/* Filters */}
@@ -340,7 +260,7 @@ function AdminDashboard() {
         <div className="text-center text-text-muted py-12 text-sm">Cargando dashboard...</div>
       ) : (
         <>
-          {/* Row 1: Cobrado hoy, Cobrado mes, Por cobrar, Gastos hoy */}
+          {/* Row 1 */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
             <KPICard
               icon={<DollarSign size={20} />}
@@ -371,7 +291,7 @@ function AdminDashboard() {
             />
           </div>
 
-          {/* Row 2: Turnos hoy, No-shows hoy, Tasa de show, Cancelados hoy */}
+          {/* Row 2 */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
             <KPICard
               icon={<CalendarDays size={20} />}
@@ -401,13 +321,13 @@ function AdminDashboard() {
             />
           </div>
 
-          {/* Row 3: Turnos dados hoy, Stock bajo, Lab en proceso, Tareas pendientes */}
+          {/* Row 3 */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             <KPICard
               icon={<CalendarPlus size={20} />}
               label="Turnos dados hoy"
               value={turnosDadosHoy.toString()}
-              subtitle="Pacientes nuevos"
+              subtitle="Cargados hoy"
               color="blue"
             />
             <KPICard
@@ -426,14 +346,14 @@ function AdminDashboard() {
             />
             <KPICard
               icon={<CheckSquare size={20} />}
-              label="Tareas pendientes"
-              value={tareasPendientes.toString()}
-              subtitle="Del equipo hoy"
+              label="Sedes activas"
+              value={sedes.length.toString()}
+              subtitle="Operando"
               color="purple"
             />
           </div>
 
-          {/* Chart: Cobranzas vs Gastos */}
+          {/* Chart */}
           {chartData.length > 0 && (
             <div className="bg-surface rounded-xl border border-border p-5 mb-6">
               <h2 className="text-sm font-semibold text-text-primary mb-4 flex items-center gap-2">
@@ -448,6 +368,7 @@ function AdminDashboard() {
                     <Tooltip
                       // eslint-disable-next-line @typescript-eslint/no-explicit-any
                       formatter={(value: any) => Number(value).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 })}
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
                       labelFormatter={(label: any) => `Día ${label}`}
                       contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e5e7eb' }}
                     />
@@ -497,7 +418,6 @@ function AdminDashboard() {
             </div>
           )}
 
-          {/* Footer */}
           <p className="text-xs text-text-muted">
             Datos en tiempo real de todas las sedes.
           </p>

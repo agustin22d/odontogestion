@@ -5,7 +5,9 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 
-export default function LoginPage() {
+export default function SignupPage() {
+  const [clinicName, setClinicName] = useState('')
+  const [adminNombre, setAdminNombre] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -13,18 +15,27 @@ export default function LoginPage() {
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
     setLoading(true)
 
-    const { error: authError } = await supabase.auth.signInWithPassword({
+    const { error: signUpError } = await supabase.auth.signUp({
       email: email.trim(),
       password,
     })
+    if (signUpError) {
+      setError(signUpError.message || 'No pudimos crear la cuenta. Probá con otro email.')
+      setLoading(false)
+      return
+    }
 
-    if (authError) {
-      setError('Email o contraseña incorrectos')
+    const { error: rpcError } = await supabase.rpc('create_clinic_with_admin', {
+      p_clinic_name: clinicName.trim(),
+      p_admin_nombre: adminNombre.trim(),
+    })
+    if (rpcError) {
+      setError(rpcError.message || 'No pudimos crear la clínica. Intentá nuevamente.')
       setLoading(false)
       return
     }
@@ -34,7 +45,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-beige flex items-center justify-center px-4">
+    <div className="min-h-screen bg-beige flex items-center justify-center px-4 py-10">
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
@@ -45,16 +56,44 @@ export default function LoginPage() {
             </span>
           </div>
           <h1 className="font-display text-2xl font-semibold text-text-primary">
-            Ingresar
+            Creá tu clínica
           </h1>
           <p className="text-sm text-text-secondary mt-1">
-            Gestión integral para tu clínica dental
+            Probá el sistema 14 días gratis · plan Free
           </p>
         </div>
 
         {/* Form */}
-        <form onSubmit={handleLogin} className="bg-surface rounded-xl border border-border p-6 shadow-sm">
+        <form onSubmit={handleSignup} className="bg-surface rounded-xl border border-border p-6 shadow-sm">
           <div className="space-y-4">
+            <div>
+              <label htmlFor="clinicName" className="block text-xs font-medium tracking-wide uppercase text-text-secondary mb-1.5">
+                Nombre de la clínica
+              </label>
+              <input
+                id="clinicName"
+                type="text"
+                value={clinicName}
+                onChange={(e) => setClinicName(e.target.value)}
+                placeholder="Mi Clínica Dental"
+                required
+                className="w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-surface text-text-primary placeholder:text-text-muted focus:outline-none focus:border-green-primary focus:ring-2 focus:ring-green-primary/10 transition-colors"
+              />
+            </div>
+            <div>
+              <label htmlFor="adminNombre" className="block text-xs font-medium tracking-wide uppercase text-text-secondary mb-1.5">
+                Tu nombre
+              </label>
+              <input
+                id="adminNombre"
+                type="text"
+                value={adminNombre}
+                onChange={(e) => setAdminNombre(e.target.value)}
+                placeholder="Nombre y apellido"
+                required
+                className="w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-surface text-text-primary placeholder:text-text-muted focus:outline-none focus:border-green-primary focus:ring-2 focus:ring-green-primary/10 transition-colors"
+              />
+            </div>
             <div>
               <label htmlFor="email" className="block text-xs font-medium tracking-wide uppercase text-text-secondary mb-1.5">
                 Email
@@ -80,7 +119,8 @@ export default function LoginPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
+                placeholder="mínimo 8 caracteres"
+                minLength={8}
                 required
                 className="w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-surface text-text-primary placeholder:text-text-muted focus:outline-none focus:border-green-primary focus:ring-2 focus:ring-green-primary/10 transition-colors"
               />
@@ -98,14 +138,14 @@ export default function LoginPage() {
             disabled={loading}
             className="mt-6 w-full bg-green-primary hover:bg-green-dark text-white font-medium py-2.5 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
           >
-            {loading ? 'Ingresando...' : 'Ingresar'}
+            {loading ? 'Creando clínica...' : 'Crear cuenta'}
           </button>
         </form>
 
         <p className="text-center text-sm text-text-secondary mt-6">
-          ¿No tenés cuenta?{' '}
-          <Link href="/signup" className="text-green-primary hover:text-green-dark font-medium">
-            Creá una clínica
+          ¿Ya tenés cuenta?{' '}
+          <Link href="/login" className="text-green-primary hover:text-green-dark font-medium">
+            Ingresar
           </Link>
         </p>
 

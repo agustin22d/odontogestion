@@ -5,10 +5,8 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/components/AuthProvider'
 import {
   DollarSign,
-  RefreshCw,
   ChevronLeft,
   ChevronRight,
-  Filter,
   Plus,
   X,
   Banknote,
@@ -33,7 +31,6 @@ export default function CobranzasPage() {
   const [cobranzas, setCobranzas] = useState<CobranzaConSede[]>([])
   const [sedes, setSedes] = useState<Sede[]>([])
   const [loading, setLoading] = useState(true)
-  const [syncing, setSyncing] = useState(false)
   const [fecha, setFecha] = useState(() => getArgentinaToday())
   const [sedeFilter, setSedeFilter] = useState<string>('todas')
   const [showForm, setShowForm] = useState(false)
@@ -86,27 +83,6 @@ export default function CobranzasPage() {
   useEffect(() => { fetchSedes() }, [fetchSedes])
   useEffect(() => { fetchCobranzas() }, [fetchCobranzas])
 
-  const handleSync = async () => {
-    setSyncing(true)
-    try {
-      const res = await fetch('/api/sync-pagos', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dias: 7 }),
-      })
-      const data = await res.json()
-      if (data.error) {
-        alert('Error: ' + data.error)
-      } else {
-        alert(`Sincronizado: ${data.insertados} pagos (${data.rango})`)
-        fetchCobranzas()
-      }
-    } catch {
-      alert('Error al sincronizar pagos')
-    }
-    setSyncing(false)
-  }
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!formData.paciente || !formData.monto || !formData.sede_id) return
@@ -115,7 +91,7 @@ export default function CobranzasPage() {
     const { error } = await supabase.from('cobranzas').insert({
       fecha,
       sede_id: formData.sede_id,
-      user_id: user?.id,
+      created_by: user?.id,
       paciente: formData.paciente,
       tratamiento: formData.tratamiento || 'Sin especificar',
       tipo_pago: formData.tipo_pago,
@@ -170,19 +146,8 @@ export default function CobranzasPage() {
       <div className="flex items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="font-display text-2xl font-semibold text-text-primary mb-1">Cobranzas</h1>
-          <p className="text-sm text-text-secondary hidden sm:block">Registro de cobros por sede — datos de Dentalink + manual</p>
+          <p className="text-sm text-text-secondary hidden sm:block">Registro manual de cobros por sede</p>
         </div>
-        {user?.rol === 'admin' && (
-          <button
-            onClick={handleSync}
-            disabled={syncing}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-green-primary hover:bg-green-dark text-white text-xs sm:text-sm font-medium rounded-lg transition-colors disabled:opacity-50 whitespace-nowrap"
-          >
-            <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
-            <span className="hidden sm:inline">{syncing ? 'Sincronizando...' : 'Sync Pagos'}</span>
-            <span className="sm:hidden">Sync</span>
-          </button>
-        )}
       </div>
 
       {/* Actions */}

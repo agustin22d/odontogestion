@@ -20,38 +20,6 @@ export function useAuth() {
   return useContext(AuthContext)
 }
 
-const SYNC_COOLDOWN_MS = 30 * 60 * 1000 // 30 minutes
-
-function shouldAutoSync(): boolean {
-  if (typeof window === 'undefined') return false
-  const last = localStorage.getItem('last_auto_sync')
-  if (!last) return true
-  return Date.now() - parseInt(last, 10) > SYNC_COOLDOWN_MS
-}
-
-function markSynced() {
-  if (typeof window !== 'undefined') {
-    localStorage.setItem('last_auto_sync', Date.now().toString())
-  }
-}
-
-function triggerSync() {
-  markSynced()
-  fetch('/api/sync-dentalink', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ dias: 7 }),
-  }).catch(() => {})
-  fetch('/api/sync-pagos', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ dias: 7 }),
-  }).catch(() => {})
-  const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
-  fetch(`/api/dentalink-agendados?fecha=${hoy}`).catch(() => {})
-  fetch('/api/sync-por-cobrar', { method: 'POST' }).catch(() => {})
-}
-
 function forceLogout() {
   // Clear ALL Supabase cookies without any API calls
   document.cookie.split(';').forEach(c => {
@@ -64,18 +32,10 @@ function forceLogout() {
 }
 
 export function AuthProvider({ children, initialUser }: { children: React.ReactNode; initialUser: User | null }) {
-  const [user, setUser] = useState<User | null>(initialUser)
-  const [loading, setLoading] = useState(false)
+  const [user] = useState<User | null>(initialUser)
+  const [loading] = useState(false)
   const supabase = createClient()
   const hiddenAtRef = useRef(0)
-
-  // Auto-sync on page load for admin (with 30min cooldown)
-  useEffect(() => {
-    if (initialUser?.rol === 'admin' && shouldAutoSync()) {
-      triggerSync()
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   // DO NOT use onAuthStateChange here.
   // Supabase's _recoverAndRefresh() fires SIGNED_IN on EVERY visibility
@@ -104,7 +64,6 @@ export function AuthProvider({ children, initialUser }: { children: React.ReactN
           window.location.reload()
         }
         // < 2 minutes: do nothing, existing data stays visible
-        // User can hit "Sync todo" or F5 if they want fresh data
       }
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)

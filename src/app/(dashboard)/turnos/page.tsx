@@ -13,8 +13,6 @@ import {
   ChevronRight,
   Ban,
   Search,
-  CalendarPlus,
-  MapPin,
   ArrowUpRight,
   ArrowDownRight,
   BarChart3,
@@ -23,11 +21,9 @@ import {
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import type { Turno, Sede } from '@/types/database'
 import { getArgentinaToday } from '@/lib/utils/dates'
-import SyncButton from '@/components/SyncButton'
 import ImportExcelButton from '@/components/ImportExcelButton'
 
 type TurnoConSede = Turno & { sedes: Sede }
-type TabId = 'agenda' | 'agendados'
 
 const ESTADO_STYLES: Record<string, { bg: string; text: string; label: string }> = {
   agendado: { bg: 'bg-blue-light', text: 'text-blue', label: 'Agendado' },
@@ -39,7 +35,6 @@ const ESTADO_STYLES: Record<string, { bg: string; text: string; label: string }>
 
 export default function TurnosPage() {
   const { user } = useAuth()
-  const [activeTab, setActiveTab] = useState<TabId>('agenda')
   const [syncKey, setSyncKey] = useState(0)
   const isAdmin = user?.rol === 'admin'
 
@@ -49,59 +44,16 @@ export default function TurnosPage() {
       <div className="flex items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="font-display text-2xl font-semibold text-text-primary mb-1">Turnos</h1>
-          <p className="text-sm text-text-secondary hidden sm:block">Agenda diaria y seguimiento de turnos agendados</p>
+          <p className="text-sm text-text-secondary hidden sm:block">Agenda diaria de turnos</p>
         </div>
         {isAdmin && (
           <div className="flex items-center gap-2">
             <ImportExcelButton entity="turnos" onSuccess={() => setSyncKey(k => k + 1)} />
-            {process.env.NEXT_PUBLIC_DEMO_MODE !== 'true' && (
-              <SyncButton
-                label="Sync Turnos"
-                endpoints={[{ url: '/api/sync-dentalink', body: { dias: 7 } }]}
-                onDone={() => setSyncKey(k => k + 1)}
-              />
-            )}
           </div>
         )}
       </div>
 
-      {/* Tabs — admin y rolA ven "Turnos dados" (arriba de analytics) */}
-      {(isAdmin || user?.rol === 'rolA') && (
-        <div className="flex items-center gap-1 bg-surface border border-border rounded-lg p-1 mb-6 max-w-full overflow-x-auto">
-          <button
-            onClick={() => setActiveTab('agenda')}
-            className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
-              activeTab === 'agenda'
-                ? 'bg-green-primary text-white shadow-sm'
-                : 'text-text-secondary hover:text-text-primary hover:bg-beige'
-            }`}
-          >
-            <CalendarDays size={16} />
-            Agenda del día
-          </button>
-          <button
-            onClick={() => setActiveTab('agendados')}
-            className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
-              activeTab === 'agendados'
-                ? 'bg-green-primary text-white shadow-sm'
-                : 'text-text-secondary hover:text-text-primary hover:bg-beige'
-            }`}
-          >
-            <CalendarPlus size={16} />
-            Turnos dados
-          </button>
-        </div>
-      )}
-
-      {/* Keep tabs mounted to preserve state */}
-      <div style={{ display: activeTab === 'agenda' ? 'block' : 'none' }}>
-        <AgendaTab syncKey={syncKey} showAnalytics={isAdmin} />
-      </div>
-      {(isAdmin || user?.rol === 'rolA') && (
-        <div style={{ display: activeTab === 'agendados' ? 'block' : 'none' }}>
-          <AgendadosTab />
-        </div>
-      )}
+      <AgendaTab syncKey={syncKey} showAnalytics={isAdmin} />
     </div>
   )
 }
@@ -477,383 +429,6 @@ function AgendaTab({ syncKey, showAnalytics }: { syncKey: number; showAnalytics?
   )
 }
 
-// ============================================
-// Tab: Turnos dados (agendados en un día)
-// ============================================
-interface Agendado {
-  id: number
-  paciente: string
-  fecha_turno: string
-  hora: string
-  profesional: string
-  sede: string
-  id_sucursal: number
-  estado: string
-  comentario: string
-  origen: string
-}
-
-const ORIGEN_COLORS: Record<string, { bg: string; text: string; bar: string }> = {
-  Instagram: { bg: 'bg-pink-50', text: 'text-pink-600', bar: '#db2777' },
-  Web: { bg: 'bg-blue-50', text: 'text-blue-600', bar: '#2563eb' },
-  WhatsApp: { bg: 'bg-emerald-50', text: 'text-emerald-600', bar: '#059669' },
-  'Teléfono': { bg: 'bg-amber-50', text: 'text-amber-600', bar: '#d97706' },
-  Referido: { bg: 'bg-purple-50', text: 'text-purple-600', bar: '#7c3aed' },
-  Facebook: { bg: 'bg-indigo-50', text: 'text-indigo-600', bar: '#4f46e5' },
-  Otro: { bg: 'bg-gray-50', text: 'text-gray-600', bar: '#6b7280' },
-}
-
-interface StatsData {
-  dias: Array<{ fecha: string; total: number }>
-  semana_actual: number
-  semana_anterior: number
-  promedio_diario: number
-  por_origen: Record<string, number>
-  por_sede: Record<string, number>
-  total_14d: number
-  total_mes: number
-  total_mes_anterior: number
-}
-
-function TurnosDadosAnalytics({ sedeFilter }: { sedeFilter: string }) {
-  const [stats, setStats] = useState<StatsData | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    const params = sedeFilter && sedeFilter !== 'todas' ? `?sede=${encodeURIComponent(sedeFilter)}` : ''
-    fetch(`/api/turnos-dados-stats${params}`)
-      .then(r => r.json())
-      .then(setStats)
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [sedeFilter])
-
-  if (loading || !stats) return null
-
-  const cambioSemanal = stats.semana_anterior > 0
-    ? Math.round(((stats.semana_actual - stats.semana_anterior) / stats.semana_anterior) * 100)
-    : 0
-  const cambioPositivo = cambioSemanal >= 0
-  const mesLabel = new Date(getArgentinaToday() + 'T12:00:00').toLocaleDateString('es-AR', { month: 'long' })
-
-  // Chart data: format dates as "Lun 7"
-  const chartData = stats.dias.map(d => {
-    const date = new Date(d.fecha + 'T12:00:00')
-    const label = date.toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric' })
-    return { name: label, total: d.total }
-  })
-
-  // Origin sorted
-  const origenes = Object.entries(stats.por_origen).sort((a, b) => b[1] - a[1])
-  const totalOrigenes = origenes.reduce((s, [, v]) => s + v, 0)
-
-  return (
-    <div className="mb-6 space-y-4">
-      {/* KPI cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="bg-surface rounded-xl border border-border p-4">
-          <p className="text-xs font-medium text-text-muted uppercase tracking-wide mb-1">Total {mesLabel}</p>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-text-primary">{stats.total_mes}</span>
-            {stats.total_mes_anterior > 0 && (
-              <span className={`flex items-center text-xs font-medium ${stats.total_mes >= stats.total_mes_anterior ? 'text-green-600' : 'text-red-500'}`}>
-                {stats.total_mes >= stats.total_mes_anterior ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
-                {Math.abs(Math.round(((stats.total_mes - stats.total_mes_anterior) / stats.total_mes_anterior) * 100))}%
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-text-muted mt-0.5">Mes anterior: {stats.total_mes_anterior}</p>
-        </div>
-
-        <div className="bg-surface rounded-xl border border-border p-4">
-          <p className="text-xs font-medium text-text-muted uppercase tracking-wide mb-1">Promedio/día</p>
-          <span className="text-2xl font-bold text-text-primary">{stats.promedio_diario}</span>
-          <p className="text-xs text-text-muted mt-0.5">últimos 7 días</p>
-        </div>
-
-        <div className="bg-surface rounded-xl border border-border p-4">
-          <p className="text-xs font-medium text-text-muted uppercase tracking-wide mb-1">Esta semana</p>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-text-primary">{stats.semana_actual}</span>
-            {stats.semana_anterior > 0 && (
-              <span className={`flex items-center text-xs font-medium ${cambioPositivo ? 'text-green-600' : 'text-red-500'}`}>
-                {cambioPositivo ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
-                {Math.abs(cambioSemanal)}%
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-text-muted mt-0.5">vs semana anterior ({stats.semana_anterior})</p>
-        </div>
-
-        <div className="bg-surface rounded-xl border border-border p-4">
-          <p className="text-xs font-medium text-text-muted uppercase tracking-wide mb-1">Top origen</p>
-          <span className="text-2xl font-bold text-text-primary">{origenes[0]?.[0] || '—'}</span>
-          <p className="text-xs text-text-muted mt-0.5">{origenes[0]?.[1] || 0} turnos ({totalOrigenes > 0 ? Math.round((origenes[0]?.[1] || 0) / totalOrigenes * 100) : 0}%)</p>
-        </div>
-      </div>
-
-      {/* Chart + Origin breakdown */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Bar chart */}
-        <div className="lg:col-span-2 bg-surface rounded-xl border border-border p-4">
-          <h3 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2">
-            <BarChart3 size={16} className="text-green-primary" />
-            Turnos dados por día (14 días)
-          </h3>
-          <div className="h-[200px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData}>
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={30} allowDecimals={false} />
-                <Tooltip
-                  contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e5e5e5' }}
-                  formatter={(value) => [value, 'Turnos']}
-                />
-                <Bar dataKey="total" fill="#2d6a4f" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Origin breakdown */}
-        <div className="bg-surface rounded-xl border border-border p-4">
-          <h3 className="text-sm font-semibold text-text-primary mb-3">Distribución por origen</h3>
-          <div className="space-y-2.5">
-            {origenes.map(([origen, count]) => {
-              const pct = totalOrigenes > 0 ? Math.round((count / totalOrigenes) * 100) : 0
-              const color = ORIGEN_COLORS[origen] || ORIGEN_COLORS.Otro
-              return (
-                <div key={origen}>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className="font-medium text-text-primary">{origen}</span>
-                    <span className="text-text-muted">{count} ({pct}%)</span>
-                  </div>
-                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{ width: `${pct}%`, backgroundColor: color.bar }}
-                    />
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function AgendadosTab() {
-  const [fecha, setFecha] = useState(() => getArgentinaToday())
-  const [data, setData] = useState<{ total: number; por_sede: Record<string, number>; por_origen: Record<string, number>; agendados: Agendado[] } | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [sedeFilter, setSedeFilter] = useState('todas')
-  const [busqueda, setBusqueda] = useState('')
-
-  const fetchData = useCallback(async () => {
-    setLoading(true)
-    try {
-      const ctrl = new AbortController()
-      const timeout = setTimeout(() => ctrl.abort(), 10000)
-      const res = await fetch(`/api/dentalink-agendados?fecha=${fecha}`, { signal: ctrl.signal })
-      clearTimeout(timeout)
-      const json = await res.json()
-      if (res.ok) {
-        setData(json)
-      } else {
-        console.error('Error:', json.error)
-      }
-    } catch (err) {
-      console.error('Error fetching agendados:', err)
-    } finally {
-      setLoading(false)
-    }
-  }, [fecha])
-
-  useEffect(() => { fetchData() }, [fetchData])
-
-  const changeDate = (offset: number) => {
-    const d = new Date(fecha + 'T12:00:00')
-    d.setDate(d.getDate() + offset)
-    setFecha(d.toISOString().split('T')[0])
-  }
-
-  const isToday = fecha === getArgentinaToday()
-
-  const formatFecha = (f: string) => {
-    const d = new Date(f + 'T12:00:00')
-    return d.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })
-  }
-
-  // Filter
-  let agendados = data?.agendados || []
-  if (sedeFilter !== 'todas') {
-    agendados = agendados.filter(a => a.sede === sedeFilter)
-  }
-  if (busqueda.trim()) {
-    const q = busqueda.toLowerCase()
-    agendados = agendados.filter(a =>
-      a.paciente.toLowerCase().includes(q) ||
-      a.comentario.toLowerCase().includes(q) ||
-      a.profesional.toLowerCase().includes(q)
-    )
-  }
-
-  // Sedes list from data
-  const sedesDisponibles = data ? Object.keys(data.por_sede).sort() : []
-
-  return (
-    <>
-      {/* Date nav + filters */}
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        <div className="flex items-center gap-1 bg-surface border border-border rounded-lg px-2 py-1.5">
-          <button onClick={() => changeDate(-1)} className="p-1 hover:bg-beige rounded transition-colors">
-            <ChevronLeft size={16} className="text-text-secondary" />
-          </button>
-          <input
-            type="date"
-            value={fecha}
-            onChange={(e) => setFecha(e.target.value)}
-            className="border-none bg-transparent text-sm font-medium text-text-primary focus:outline-none w-[130px]"
-          />
-          <button onClick={() => changeDate(1)} className="p-1 hover:bg-beige rounded transition-colors">
-            <ChevronRight size={16} className="text-text-secondary" />
-          </button>
-          {!isToday && (
-            <button onClick={() => setFecha(getArgentinaToday())} className="text-xs text-green-primary hover:text-green-dark font-medium ml-1">
-              Hoy
-            </button>
-          )}
-        </div>
-        <select
-          value={sedeFilter}
-          onChange={(e) => setSedeFilter(e.target.value)}
-          className="text-sm border border-border rounded-lg px-2 py-1.5 bg-surface text-text-primary focus:outline-none focus:border-green-primary"
-        >
-          <option value="todas">Todas las sedes</option>
-          {sedesDisponibles.map(s => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
-      </div>
-
-      {/* Analytics */}
-      <TurnosDadosAnalytics sedeFilter={sedeFilter} />
-
-      <p className="text-sm text-text-secondary capitalize mb-4">{formatFecha(fecha)}</p>
-
-      {loading ? (
-        <div className="bg-surface rounded-xl border border-border p-8 text-center text-text-muted text-sm">
-          Consultando Dentalink...
-        </div>
-      ) : !data ? (
-        <div className="bg-surface rounded-xl border border-border p-8 text-center text-text-muted text-sm">
-          Error al cargar datos
-        </div>
-      ) : (
-        <>
-          {/* Summary: total + por sede */}
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-4">
-            <StatCard icon={<CalendarPlus size={18} />} label="Turnos dados" value={data.total} color="text-text-primary" />
-            {Object.entries(data.por_sede).sort((a, b) => b[1] - a[1]).map(([sede, count]) => (
-              <button
-                key={sede}
-                onClick={() => setSedeFilter(sedeFilter === sede ? 'todas' : sede)}
-                className={`rounded-xl border p-3 text-left transition-all ${
-                  sedeFilter === sede ? 'bg-green-50 border-green-200 ring-2 ring-green-primary/20' : 'bg-surface border-border hover:border-gray-300'
-                }`}
-              >
-                <div className="flex items-center gap-1.5 mb-0.5">
-                  <MapPin size={14} className="text-text-muted" />
-                  <span className="text-lg font-bold text-text-primary">{count}</span>
-                </div>
-                <p className="text-xs font-medium text-text-secondary truncate">{sede}</p>
-              </button>
-            ))}
-          </div>
-
-
-          {/* Por origen badges */}
-          <div className="flex flex-wrap gap-2 mb-4">
-            {Object.entries(data.por_origen).sort((a, b) => b[1] - a[1]).map(([origen, count]) => {
-              const style = ORIGEN_COLORS[origen] || ORIGEN_COLORS.Otro
-              return (
-                <span key={origen} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border ${style.bg} ${style.text}`}>
-                  {origen}: {count}
-                </span>
-              )
-            })}
-          </div>
-
-          {/* Search */}
-          <div className="relative mb-4">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
-            <input
-              type="text"
-              placeholder="Buscar paciente o comentario..."
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-              className="w-full sm:w-80 pl-9 pr-3 py-2 text-sm border border-border rounded-lg bg-surface text-text-primary placeholder:text-text-muted focus:outline-none focus:border-green-primary"
-            />
-          </div>
-
-          {/* Table */}
-          <div className="bg-surface rounded-xl border border-border overflow-hidden">
-            {agendados.length === 0 ? (
-              <div className="p-8 text-center text-text-muted text-sm">No hay turnos dados con estos filtros</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border bg-beige/50">
-                      <th className="text-left px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide">Paciente</th>
-                      <th className="text-left px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide">Turno para</th>
-                      <th className="text-left px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide hidden md:table-cell">Profesional</th>
-                      <th className="text-left px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide hidden sm:table-cell">Sede</th>
-                      <th className="text-left px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide">Origen</th>
-                      <th className="text-left px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide hidden lg:table-cell">Comentario</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {agendados.map(a => {
-                      const origenStyle = ORIGEN_COLORS[a.origen] || ORIGEN_COLORS.Otro
-                      return (
-                        <tr key={a.id} className="border-b border-border-light hover:bg-beige/30 transition-colors">
-                          <td className="px-4 py-3 font-medium text-text-primary">{a.paciente}</td>
-                          <td className="px-4 py-3 text-text-secondary whitespace-nowrap">
-                            {a.fecha_turno
-                              ? `${new Date(a.fecha_turno + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })}${a.hora ? ` ${a.hora}` : ''}`
-                              : '—'}
-                          </td>
-                          <td className="px-4 py-3 text-text-secondary hidden md:table-cell">{a.profesional || '—'}</td>
-                          <td className="px-4 py-3 text-text-secondary hidden sm:table-cell">{a.sede}</td>
-                          <td className="px-4 py-3">
-                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${origenStyle.bg} ${origenStyle.text}`}>
-                              {a.origen}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-text-muted text-xs hidden lg:table-cell max-w-[200px] truncate">
-                            {a.comentario || '—'}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          <p className="text-xs text-text-muted mt-3">
-            {agendados.length} turno{agendados.length !== 1 ? 's' : ''} dado{agendados.length !== 1 ? 's' : ''}
-            {sedeFilter !== 'todas' ? ` en ${sedeFilter}` : ''}
-          </p>
-        </>
-      )}
-    </>
-  )
-}
 
 // ============================================
 // Shared components

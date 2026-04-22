@@ -8,9 +8,6 @@ import {
   CalendarDays,
   Wallet,
   Package,
-  Users,
-  CheckSquare,
-  Timer,
   LogOut,
   ChevronLeft,
   Menu,
@@ -23,27 +20,16 @@ interface NavItem {
   label: string
   href: string
   icon: React.ReactNode
-  roles: string[]
-  disabled?: boolean
 }
 
-const adminNavItems: NavItem[] = [
-  { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard size={20} />, roles: ['admin'] },
-  { label: 'Turnos', href: '/turnos', icon: <CalendarDays size={20} />, roles: ['admin'] },
-  { label: 'Finanzas', href: '/finanzas', icon: <Wallet size={20} />, roles: ['admin'] },
-  { label: 'Stock', href: '/stock', icon: <Package size={20} />, roles: ['admin'] },
-  { label: 'Laboratorio', href: '/laboratorio', icon: <FlaskConical size={20} />, roles: ['admin'] },
-  { label: 'Empleados', href: '/empleados', icon: <Users size={20} />, roles: ['admin'] },
-  { label: 'Configuración', href: '/configuracion', icon: <Settings size={20} />, roles: ['admin'] },
-]
-
-const employeeNavItems: NavItem[] = [
-  { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard size={20} />, roles: ['rolA', 'rolB', 'rolC', 'rolD'] },
-  { label: 'Turnos', href: '/turnos', icon: <CalendarDays size={20} />, roles: ['rolA', 'rolC', 'rolD'] },
-  { label: 'Stock', href: '/stock', icon: <Package size={20} />, roles: ['rolD'] },
-  { label: 'Laboratorio', href: '/laboratorio', icon: <FlaskConical size={20} />, roles: ['rolB', 'rolC'] },
-  { label: 'Tareas', href: '/tareas', icon: <CheckSquare size={20} />, roles: ['rolA', 'rolB', 'rolC', 'rolD'] },
-  { label: 'Horas', href: '/horas', icon: <Timer size={20} />, roles: ['rolA'] },
+// Única lista de navegación. TODO fase-1: filtrar por `has_permission()`.
+const navItems: NavItem[] = [
+  { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard size={20} /> },
+  { label: 'Turnos', href: '/turnos', icon: <CalendarDays size={20} /> },
+  { label: 'Finanzas', href: '/finanzas', icon: <Wallet size={20} /> },
+  { label: 'Stock', href: '/stock', icon: <Package size={20} /> },
+  { label: 'Laboratorio', href: '/laboratorio', icon: <FlaskConical size={20} /> },
+  { label: 'Configuración', href: '/configuracion', icon: <Settings size={20} /> },
 ]
 
 export default function Sidebar() {
@@ -51,18 +37,6 @@ export default function Sidebar() {
   const { user, signOut } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
-
-  const isAdmin = user?.rol === 'admin'
-  const navItems = isAdmin ? adminNavItems : employeeNavItems
-  const filteredItems = navItems.filter((item) => user && item.roles.includes(user.rol))
-
-  const roleLabels: Record<string, string> = {
-    admin: 'Administrador',
-    rolA: 'Recepcionista Digital',
-    rolB: 'Vendedor',
-    rolC: 'Recepcionista',
-    rolD: 'Asistente',
-  }
 
   return (
     <>
@@ -112,28 +86,8 @@ export default function Sidebar() {
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto py-3 px-2">
           <div className="space-y-0.5">
-            {filteredItems.map((item) => {
+            {navItems.map((item) => {
               const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
-
-              if (item.disabled) {
-                return (
-                  <span
-                    key={item.href}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium opacity-40 cursor-not-allowed select-none
-                      ${collapsed ? 'justify-center' : ''}
-                    `}
-                    title={collapsed ? `${item.label} (próximamente)` : 'Próximamente'}
-                  >
-                    <span className="text-text-muted">{item.icon}</span>
-                    {!collapsed && (
-                      <>
-                        {item.label}
-                        <span className="ml-auto text-[9px] uppercase tracking-wider text-text-muted font-semibold">Pronto</span>
-                      </>
-                    )}
-                  </span>
-                )
-              }
 
               return (
                 <Link
@@ -164,7 +118,7 @@ export default function Sidebar() {
           {!collapsed && user && (
             <div className="mb-2 px-1">
               <p className="text-sm font-medium text-text-primary truncate">{user.nombre}</p>
-              <p className="text-xs text-text-muted">{roleLabels[user.rol] || user.rol}</p>
+              <p className="text-xs text-text-muted truncate">{user.email}</p>
             </div>
           )}
           <button

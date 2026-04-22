@@ -32,7 +32,11 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getSession()
 
   const pathname = request.nextUrl.pathname
-  const isPublicRoute = pathname.startsWith('/login') || pathname.startsWith('/api/') || pathname.startsWith('/cambiar-clave')
+  const isPublicRoute =
+    pathname.startsWith('/login') ||
+    pathname.startsWith('/signup') ||
+    pathname.startsWith('/api/') ||
+    pathname.startsWith('/cambiar-clave')
 
   // Check if session JWT is expired (applies to ALL routes)
   const isExpired = session?.expires_at
@@ -53,7 +57,9 @@ export async function updateSession(request: NextRequest) {
     return response
   }
 
-  // If valid session and user is on login page, redirect to dashboard
+  // If valid session and user is on login page, redirect to dashboard.
+  // /signup no redirige: el usuario acaba de autenticarse pero todavía no
+  // ejecutó la RPC create_clinic_with_admin.
   if (session && !isExpired && pathname.startsWith('/login')) {
     const url = request.nextUrl.clone()
     url.pathname = '/dashboard'

@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/components/AuthProvider'
-import SyncButton from '@/components/SyncButton'
 import ImportExcelButton from '@/components/ImportExcelButton'
 import {
   DollarSign,
@@ -30,24 +29,10 @@ type CobranzaConSede = Cobranza & { sedes: Sede }
 
 type TabId = 'resumen' | 'cobranzas' | 'por-cobrar' | 'gastos'
 
+// Stub: la API /api/dolar se removió con Dentalink. En Fase 2 se puede reemplazar
+// por un hook real si volvemos a mostrar conversión USD.
 function useDolarOficial() {
-  const [cotizacion, setCotizacion] = useState<number | null>(null)
-  const [loadingDolar, setLoadingDolar] = useState(false)
-
-  const fetchDolar = useCallback(async () => {
-    setLoadingDolar(true)
-    try {
-      const res = await fetch('/api/dolar')
-      if (res.ok) {
-        const data = await res.json()
-        setCotizacion(data.venta)
-      }
-    } catch { /* ignore */ } finally {
-      setLoadingDolar(false)
-    }
-  }, [])
-
-  return { cotizacion, loadingDolar, fetchDolar }
+  return { cotizacion: null as number | null, loadingDolar: false, fetchDolar: () => {} }
 }
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
@@ -92,26 +77,10 @@ export default function FinanzasPage() {
         </div>
         <div className="flex items-center gap-2">
           {activeTab === 'cobranzas' && (
-            <>
-              <ImportExcelButton entity="cobranzas" onSuccess={() => setSyncKey(k => k + 1)} />
-              {process.env.NEXT_PUBLIC_DEMO_MODE !== 'true' && (
-                <SyncButton
-                  label="Sync Pagos"
-                  endpoints={[{ url: '/api/sync-pagos', body: { dias: 7 } }]}
-                  onDone={() => setSyncKey(k => k + 1)}
-                />
-              )}
-            </>
+            <ImportExcelButton entity="cobranzas" onSuccess={() => setSyncKey(k => k + 1)} />
           )}
           {activeTab === 'gastos' && (
             <ImportExcelButton entity="gastos" onSuccess={() => setSyncKey(k => k + 1)} />
-          )}
-          {activeTab === 'por-cobrar' && process.env.NEXT_PUBLIC_DEMO_MODE !== 'true' && (
-            <SyncButton
-              label="Sync Deudas"
-              endpoints={[{ url: '/api/sync-por-cobrar' }]}
-              onDone={() => setSyncKey(k => k + 1)}
-            />
           )}
         </div>
       </div>
@@ -179,11 +148,11 @@ function ResumenTab({ sedes }: { sedes: Sede[] }) {
       const finMes = `${mesActual}-${String(lastDay).padStart(2, '0')}`
 
       const [cobMesRes, cobHoyRes, gastosMesRes, deudasRes, vencimientosRes] = await Promise.all([
-        supabase.from('cobranzas').select('monto, sede_id, sede_ids').gte('fecha', inicioMes).lte('fecha', finMes),
-        supabase.from('cobranzas').select('monto, sede_id, sede_ids').eq('fecha', hoy),
-        supabase.from('gastos').select('monto, estado, sede_ids').gte('fecha', inicioMes).lte('fecha', finMes),
+        supabase.from('cobranzas').select('monto, sede_id').gte('fecha', inicioMes).lte('fecha', finMes),
+        supabase.from('cobranzas').select('monto, sede_id').eq('fecha', hoy),
+        supabase.from('gastos').select('monto, estado_pago, sede_id').gte('fecha', inicioMes).lte('fecha', finMes),
         supabase.from('deudas').select('monto_total, monto_cobrado, sede_id').in('estado', ['pendiente', 'parcial']),
-        supabase.from('gastos').select('id, concepto, monto, fecha_vencimiento, categoria, sede_ids').eq('estado', 'pendiente').not('fecha_vencimiento', 'is', null).gte('fecha_vencimiento', hoy).order('fecha_vencimiento', { ascending: true }).limit(10),
+        supabase.from('gastos').select('id, concepto, monto, fecha_vencimiento, categoria, sede_id').eq('estado_pago', 'pendiente').not('fecha_vencimiento', 'is', null).gte('fecha_vencimiento', hoy).order('fecha_vencimiento', { ascending: true }).limit(10),
       ])
 
       // Check for errors on any query
@@ -226,9 +195,9 @@ function ResumenTab({ sedes }: { sedes: Sede[] }) {
       setCobradoMes((cobMesRes.data || []).reduce((s: number, c: { monto: number; sede_id?: string | null; sede_ids?: string[] }) => s + cobMonto(c, sf), 0))
       setCobradoHoy((cobHoyRes.data || []).reduce((s: number, c: { monto: number; sede_id?: string | null; sede_ids?: string[] }) => s + cobMonto(c, sf), 0))
 
-      const gastosData = (gastosMesRes.data || []) as { monto: number; estado: string; sede_ids?: string[] }[]
-      setGastosMesPagado(gastosData.filter(g => g.estado === 'pagado').reduce((s, g) => s + gasMonto(g, sf), 0))
-      setGastosMesPendiente(gastosData.filter(g => g.estado === 'pendiente').reduce((s, g) => s + gasMonto(g, sf), 0))
+      const gastosData = (gastosMesRes.data || []) as { monto: number; estado_pago: string; sede_id?: string | null }[]
+      setGastosMesPagado(gastosData.filter(g => g.estado_pago === 'pagado').reduce((s, g) => s + gasMonto(g, sf), 0))
+      setGastosMesPendiente(gastosData.filter(g => g.estado_pago === 'pendiente').reduce((s, g) => s + gasMonto(g, sf), 0))
 
       if (sf === 'todas') {
         setDeudasPendientes((deudasRes.data || []).reduce((s: number, d: { monto_total: number; monto_cobrado: number }) => s + (Number(d.monto_total) - Number(d.monto_cobrado)), 0))
@@ -505,20 +474,18 @@ function CobranzasTab({ syncKey, sedes }: { syncKey: number; sedes: Sede[] }) {
     }
 
     setSaving(true)
+    // Schema nuevo: sede_id singular (nullable = general). Si el UI histórico
+    // elige varias sedes se guarda la primera; multi-sede real vuelve en Fase 2.
     const { error } = await supabase.from('cobranzas').insert({
       fecha,
       sede_id: sedeIds.length > 0 ? sedeIds[0] : null,
-      sede_ids: sedeIds,
-      user_id: user?.id,
+      created_by: user?.id,
       paciente: formData.paciente,
       tratamiento: formData.tratamiento || 'Sin especificar',
       tipo_pago: formData.tipo_pago,
       monto: montoARS,
       es_cuota: formData.es_cuota,
       notas: formData.notas || null,
-      moneda: formData.moneda,
-      monto_original: montoOriginal,
-      tipo_cambio: tipoCambio,
     })
 
     if (error) {
@@ -1273,18 +1240,23 @@ interface GastoRow {
   id: string
   fecha: string
   fecha_vencimiento: string | null
-  sede_ids: string[]
+  sede_id: string | null
   concepto: string
   categoria: string
   monto: number
-  estado: 'pendiente' | 'pagado'
-  pagado_por: string | null
-  tipo_pago: string | null
-  moneda: string
-  monto_original: number | null
-  tipo_cambio: number | null
-  user_id: string | null
+  estado_pago: 'pendiente' | 'pagado'
+  tipo: 'fijo' | 'variable'
+  notas: string | null
+  created_by: string | null
   created_at: string
+  // Legacy opcionales (UI histórico)
+  sede_ids?: string[]
+  pagado_por?: string | null
+  tipo_pago?: string | null
+  moneda?: string
+  monto_original?: number | null
+  tipo_cambio?: number | null
+  user_id?: string | null
 }
 
 function GastosTab({ sedes }: { sedes: Sede[] }) {
@@ -1342,7 +1314,7 @@ function GastosTab({ sedes }: { sedes: Sede[] }) {
 
       // sede filter is applied client-side to include general gastos (empty sede_ids)
       if (catFilter !== 'todas') query = query.eq('categoria', catFilter)
-      if (estadoFilter !== 'todos') query = query.eq('estado', estadoFilter)
+      if (estadoFilter !== 'todos') query = query.eq('estado_pago', estadoFilter)
 
       const { data, error } = await query
       if (error) console.error('Error fetching gastos:', error)
@@ -1378,21 +1350,19 @@ function GastosTab({ sedes }: { sedes: Sede[] }) {
 
     setSaving(true)
     const sedeIds = form.sedeMode === 'general' ? [] : form.sede_ids
+    // Schema nuevo: gastos tiene sede_id singular (nullable = general) y
+    // estado_pago como enum. Multi-sede real vuelve en Fase 2.
     const { error } = await supabase.from('gastos').insert({
       fecha: form.fecha,
       fecha_vencimiento: form.fecha_vencimiento || null,
-      sede_ids: sedeIds,
+      sede_id: sedeIds.length > 0 ? sedeIds[0] : null,
       concepto: form.concepto.trim(),
       categoria: form.categoria,
       monto: montoARS,
-      estado: form.estado,
+      estado_pago: form.estado,
       tipo: 'variable',
-      pagado_por: form.pagado_por.trim() || null,
-      tipo_pago: form.tipo_pago,
-      moneda: form.moneda,
-      monto_original: montoOriginal,
-      tipo_cambio: tipoCambio,
-      user_id: user?.id,
+      notas: form.pagado_por.trim() || null,
+      created_by: user?.id,
     })
     if (error) {
       alert('Error al guardar: ' + error.message)
@@ -1405,8 +1375,8 @@ function GastosTab({ sedes }: { sedes: Sede[] }) {
   }
 
   const toggleEstado = async (g: GastoRow) => {
-    const newEstado = g.estado === 'pendiente' ? 'pagado' : 'pendiente'
-    const { error } = await supabase.from('gastos').update({ estado: newEstado }).eq('id', g.id)
+    const newEstado = g.estado_pago === 'pendiente' ? 'pagado' : 'pendiente'
+    const { error } = await supabase.from('gastos').update({ estado_pago: newEstado }).eq('id', g.id)
     if (error) {
       alert('Error: ' + error.message)
       return
@@ -1448,8 +1418,8 @@ function GastosTab({ sedes }: { sedes: Sede[] }) {
       })
 
   const totalMes = gastosFiltrados.reduce((s, g) => s + Number(g.monto), 0)
-  const totalPendiente = gastosFiltrados.filter(g => g.estado === 'pendiente').reduce((s, g) => s + Number(g.monto), 0)
-  const totalPagado = gastosFiltrados.filter(g => g.estado === 'pagado').reduce((s, g) => s + Number(g.monto), 0)
+  const totalPendiente = gastosFiltrados.filter(g => g.estado_pago === 'pendiente').reduce((s, g) => s + Number(g.monto), 0)
+  const totalPagado = gastosFiltrados.filter(g => g.estado_pago === 'pagado').reduce((s, g) => s + Number(g.monto), 0)
 
   // Group by category for summary
   const porCategoria: Record<string, number> = {}
@@ -1895,13 +1865,13 @@ function GastosTab({ sedes }: { sedes: Sede[] }) {
                         <button
                           onClick={() => toggleEstado(g)}
                           className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer transition-colors ${
-                            g.estado === 'pagado'
+                            g.estado_pago === 'pagado'
                               ? 'bg-green-100 text-green-700 hover:bg-green-200'
                               : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
                           }`}
                           title="Click para cambiar estado"
                         >
-                          {g.estado === 'pagado' ? 'Pagado' : 'Pendiente'}
+                          {g.estado_pago === 'pagado' ? 'Pagado' : 'Pendiente'}
                         </button>
                       </td>
                       <td className="px-4 py-3 text-text-secondary text-xs hidden lg:table-cell whitespace-nowrap">
