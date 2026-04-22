@@ -55,9 +55,10 @@ export default async function DashboardLayout({
     <AuthProvider initialUser={user}>
       <div className="min-h-screen bg-beige" style={themeStyle}>
         <Sidebar logoUrl={logoUrl} />
-        {/* Main content — offset by sidebar width */}
+        {/* Main content — offset by sidebar width. En mobile usamos pt-16
+         * para dejar espacio al botón hamburguesa fixed top-4 left-4. */}
         <main className="lg:ml-[250px] transition-all duration-200">
-          <div className="p-4 pt-16 sm:p-6 sm:pt-16 lg:p-8 lg:pt-8 max-w-[1400px] mx-auto">
+          <div className="px-3 py-4 pt-16 sm:px-6 sm:py-6 sm:pt-16 lg:p-8 lg:pt-8 max-w-[1400px] mx-auto">
             {children}
           </div>
         </main>

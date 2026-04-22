@@ -230,7 +230,9 @@ function AdminDashboard() {
           setCustomFin={setCustomFin}
         />
 
-        <span className="text-xs text-text-muted ml-auto">Período: <span className="font-medium text-text-secondary">{label}</span></span>
+        <span className="text-xs text-text-muted w-full sm:w-auto sm:ml-auto">
+          Período: <span className="font-medium text-text-secondary">{label}</span>
+        </span>
       </div>
 
       {fetchError && (
@@ -484,15 +486,15 @@ function KPICard({ icon, label, value, subtitle, color = 'green' }: {
   const c = colorMap[color]
 
   return (
-    <div className="bg-surface rounded-xl border border-border p-4">
+    <div className="bg-surface rounded-xl border border-border p-3 sm:p-4">
       <div className="flex items-center gap-2 mb-2">
-        <div className={`w-8 h-8 rounded-lg ${c.bg} flex items-center justify-center`}>
+        <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg ${c.bg} flex items-center justify-center`}>
           <span className={c.icon}>{icon}</span>
         </div>
-        <span className="text-xs font-medium text-text-muted uppercase tracking-wide">{label}</span>
+        <span className="text-[10px] sm:text-xs font-medium text-text-muted uppercase tracking-wide truncate">{label}</span>
       </div>
-      <p className={`text-xl font-semibold ${c.value}`}>{value}</p>
-      {subtitle && <p className="text-xs text-text-secondary mt-0.5">{subtitle}</p>}
+      <p className={`text-lg sm:text-xl font-semibold ${c.value} break-words`}>{value}</p>
+      {subtitle && <p className="text-xs text-text-secondary mt-0.5 truncate">{subtitle}</p>}
     </div>
   )
 }
