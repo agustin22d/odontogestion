@@ -227,11 +227,24 @@ function PacienteDetail({
     (async () => {
       setLoading(true)
       const like = `%${searchKey}%`
-      const [turnosRes, cobRes, labRes] = await Promise.all([
-        supabase.from('turnos').select('fecha, hora, sede_id, profesional, estado').ilike('paciente', like).order('fecha', { ascending: false }).limit(50),
-        supabase.from('cobranzas').select('fecha, tratamiento, tipo_pago, monto, sede_id').ilike('paciente', like).order('fecha', { ascending: false }).limit(50),
-        supabase.from('laboratorio_casos').select('created_at, tipo, laboratorio, estado, sede_id').ilike('paciente', like).order('created_at', { ascending: false }).limit(50),
+      // Dos queries por entidad: (a) FK patient_id = este paciente,
+      // (b) legacy sin FK + nombre ILIKE. Unimos y deduplicamos por fecha.
+      const [turnosFk, cobFk, labFk, turnosName, cobName, labName] = await Promise.all([
+        supabase.from('turnos').select('fecha, hora, sede_id, profesional, estado').eq('patient_id', paciente.id).order('fecha', { ascending: false }).limit(50),
+        supabase.from('cobranzas').select('fecha, tratamiento, tipo_pago, monto, sede_id').eq('patient_id', paciente.id).order('fecha', { ascending: false }).limit(50),
+        supabase.from('laboratorio_casos').select('created_at, tipo, laboratorio, estado, sede_id').eq('patient_id', paciente.id).order('created_at', { ascending: false }).limit(50),
+        supabase.from('turnos').select('fecha, hora, sede_id, profesional, estado').is('patient_id', null).ilike('paciente', like).order('fecha', { ascending: false }).limit(50),
+        supabase.from('cobranzas').select('fecha, tratamiento, tipo_pago, monto, sede_id').is('patient_id', null).ilike('paciente', like).order('fecha', { ascending: false }).limit(50),
+        supabase.from('laboratorio_casos').select('created_at, tipo, laboratorio, estado, sede_id').is('patient_id', null).ilike('paciente', like).order('created_at', { ascending: false }).limit(50),
       ])
+
+      const turnosData = [...(turnosFk.data || []), ...(turnosName.data || [])]
+      const cobData = [...(cobFk.data || []), ...(cobName.data || [])]
+      const labData = [...(labFk.data || []), ...(labName.data || [])]
+
+      const turnosRes = { data: turnosData, error: null }
+      const cobRes = { data: cobData, error: null }
+      const labRes = { data: labData, error: null }
 
       const items: HistorialItem[] = []
       ;((turnosRes.data as unknown as Array<{ fecha: string; hora: string; sede_id: string | null; profesional: string | null; estado: string }>) || []).forEach(t => {

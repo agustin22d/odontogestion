@@ -142,6 +142,7 @@ export interface Cobranza {
   clinic_id?: string
   fecha: string
   sede_id: string | null
+  patient_id?: string | null
   created_by?: string | null
   paciente: string
   tratamiento: string
@@ -212,6 +213,7 @@ export interface Turno {
   fecha: string
   hora: string
   sede_id: string | null
+  patient_id?: string | null
   paciente: string
   profesional: string | null
   estado: EstadoTurno
@@ -258,6 +260,7 @@ export interface MovimientoStock {
 export interface LaboratorioCaso {
   id: string
   clinic_id?: string
+  patient_id?: string | null
   paciente: string
   sede_id: string | null
   profesional: string | null
