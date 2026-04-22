@@ -20,6 +20,7 @@ export type EstadoTurno = 'agendado' | 'atendido' | 'no_asistio' | 'cancelado' |
 export type OrigenTurno = 'web' | 'whatsapp' | 'telefono' | 'instagram' | 'presencial' | 'otro'
 export type TipoGasto = 'fijo' | 'variable'
 export type EstadoPagoGasto = 'pendiente' | 'pagado'
+export type RecurrenceFrequency = 'monthly' | 'weekly' | 'yearly'
 export type TipoMovimientoStock = 'entrada' | 'salida'
 export type EstadoLaboratorio =
   | 'escaneado'
@@ -173,6 +174,10 @@ export interface Gasto {
   tipo: TipoGasto
   estado_pago: EstadoPagoGasto
   notas: string | null
+  is_recurring?: boolean
+  recurrence_frequency?: RecurrenceFrequency | null
+  recurrence_day?: number | null
+  parent_expense_id?: string | null
   created_at: string
   // Legacy opcional (columnas/props previas que puede usar el UI existente)
   user_id?: string | null

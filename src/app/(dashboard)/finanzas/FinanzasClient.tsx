@@ -1250,6 +1250,9 @@ interface GastoRow {
   notas: string | null
   created_by: string | null
   created_at: string
+  is_recurring?: boolean
+  recurrence_frequency?: 'monthly' | 'weekly' | 'yearly' | null
+  parent_expense_id?: string | null
   // Legacy opcionales (UI histórico)
   sede_ids?: string[]
   pagado_por?: string | null
@@ -1297,6 +1300,9 @@ function GastosTab({ sedes }: { sedes: Sede[] }) {
     moneda: 'ARS' as string,
     monto_usd: '',
     tipo_cambio: '',
+    is_recurring: false,
+    recurrence_frequency: 'monthly' as 'monthly' | 'weekly' | 'yearly',
+    recurrence_months: 12,
   })
 
   const fetchGastos = useCallback(async () => {
@@ -1355,7 +1361,7 @@ function GastosTab({ sedes }: { sedes: Sede[] }) {
     const sedeIds = form.sedeMode === 'general' ? [] : form.sede_ids
     // Schema nuevo: gastos tiene sede_id singular (nullable = general) y
     // estado_pago como enum. Multi-sede real vuelve en Fase 2.
-    const { error } = await supabase.from('gastos').insert({
+    const { data: inserted, error } = await supabase.from('gastos').insert({
       fecha: form.fecha,
       fecha_vencimiento: form.fecha_vencimiento || null,
       sede_id: sedeIds.length > 0 ? sedeIds[0] : null,
@@ -1366,14 +1372,37 @@ function GastosTab({ sedes }: { sedes: Sede[] }) {
       tipo: 'variable',
       notas: form.pagado_por.trim() || null,
       created_by: user?.id,
-    })
+      is_recurring: form.is_recurring,
+      recurrence_frequency: form.is_recurring ? form.recurrence_frequency : null,
+    }).select('id').single()
+
     if (error) {
       alert('Error al guardar: ' + error.message)
-    } else {
-      setForm({ ...form, concepto: '', monto: '', monto_usd: '', tipo_cambio: '', pagado_por: '', fecha_vencimiento: '', sede_ids: [], sedeMode: 'general', moneda: 'ARS' })
-      setShowForm(false)
-      fetchGastos()
+      setSaving(false)
+      return
     }
+
+    // Si es recurrente, generar las instancias futuras
+    if (form.is_recurring && inserted) {
+      const parentId = (inserted as { id: string }).id
+      const { error: rpcError } = await supabase.rpc('generate_recurring_expense_instances', {
+        p_parent_id: parentId,
+        p_months: form.recurrence_months,
+      })
+      if (rpcError) {
+        alert('Gasto creado pero falló la generación de instancias recurrentes: ' + rpcError.message)
+      }
+    }
+
+    setForm({
+      ...form,
+      concepto: '', monto: '', monto_usd: '', tipo_cambio: '',
+      pagado_por: '', fecha_vencimiento: '',
+      sede_ids: [], sedeMode: 'general', moneda: 'ARS',
+      is_recurring: false,
+    })
+    setShowForm(false)
+    fetchGastos()
     setSaving(false)
   }
 
@@ -1691,6 +1720,48 @@ function GastosTab({ sedes }: { sedes: Sede[] }) {
               </select>
             </div>
           </div>
+
+          {/* Recurrencia */}
+          <div className="mt-4 p-3 bg-beige/50 rounded-lg border border-border">
+            <label className="flex items-center gap-2 text-sm text-text-primary cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.is_recurring}
+                onChange={e => setForm({ ...form, is_recurring: e.target.checked })}
+                className="rounded border-border"
+              />
+              <span className="font-medium">Es un gasto recurrente</span>
+              <span className="text-xs text-text-muted">(se generan N instancias futuras automáticamente)</span>
+            </label>
+            {form.is_recurring && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                <div>
+                  <label className="block text-xs font-medium text-text-secondary mb-1">Frecuencia</label>
+                  <select
+                    value={form.recurrence_frequency}
+                    onChange={e => setForm({ ...form, recurrence_frequency: e.target.value as 'monthly' | 'weekly' | 'yearly' })}
+                    className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-green-primary"
+                  >
+                    <option value="monthly">Mensual</option>
+                    <option value="weekly">Semanal</option>
+                    <option value="yearly">Anual</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-text-secondary mb-1">Cantidad de repeticiones</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="60"
+                    value={form.recurrence_months}
+                    onChange={e => setForm({ ...form, recurrence_months: Math.max(1, parseInt(e.target.value) || 1) })}
+                    className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-green-primary"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="flex justify-end mt-4">
             <button
               type="submit"
@@ -1833,7 +1904,19 @@ function GastosTab({ sedes }: { sedes: Sede[] }) {
                   return (
                     <tr key={g.id} className="border-b border-border-light hover:bg-beige/30 transition-colors">
                       <td className="px-4 py-3 text-text-primary whitespace-nowrap">{d}/{m}</td>
-                      <td className="px-4 py-3 text-text-primary max-w-[250px] truncate">{g.concepto}</td>
+                      <td className="px-4 py-3 text-text-primary max-w-[250px] truncate">
+                        <span className="inline-flex items-center gap-1.5">
+                          {g.concepto}
+                          {(g.is_recurring || g.parent_expense_id) && (
+                            <span
+                              className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-purple-light text-purple text-[10px] font-bold flex-shrink-0"
+                              title={g.is_recurring ? 'Gasto recurrente (plantilla)' : 'Instancia de un gasto recurrente'}
+                            >
+                              ↻
+                            </span>
+                          )}
+                        </span>
+                      </td>
                       <td className="px-4 py-3 hidden sm:table-cell">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${colors.bg} ${colors.text}`}>
                           {catLabel}
