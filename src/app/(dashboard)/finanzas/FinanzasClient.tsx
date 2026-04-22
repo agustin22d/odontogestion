@@ -21,9 +21,11 @@ import {
   TrendingUp,
   TrendingDown,
   CalendarClock,
+  Download,
 } from 'lucide-react'
 import type { Sede, Cobranza } from '@/types/database'
 import { getArgentinaToday } from '@/lib/utils/dates'
+import { downloadCsv, moneyCsv } from '@/lib/utils/csv'
 
 type CobranzaConSede = Cobranza & { sedes: Sede }
 
@@ -77,10 +79,16 @@ export default function FinanzasPage() {
         </div>
         <div className="flex items-center gap-2">
           {activeTab === 'cobranzas' && (
-            <ImportExcelButton entity="cobranzas" onSuccess={() => setSyncKey(k => k + 1)} />
+            <>
+              <ExportCsvButton entity="cobranzas" sedes={sedes} />
+              <ImportExcelButton entity="cobranzas" onSuccess={() => setSyncKey(k => k + 1)} />
+            </>
           )}
           {activeTab === 'gastos' && (
-            <ImportExcelButton entity="gastos" onSuccess={() => setSyncKey(k => k + 1)} />
+            <>
+              <ExportCsvButton entity="gastos" sedes={sedes} />
+              <ImportExcelButton entity="gastos" onSuccess={() => setSyncKey(k => k + 1)} />
+            </>
           )}
         </div>
       </div>
@@ -1990,3 +1998,88 @@ function GastosTab({ sedes }: { sedes: Sede[] }) {
     </div>
   )
 }
+
+// ============================================
+// Export CSV (cobranzas / gastos) — cliente-side, UTF-8+BOM, separador ';'
+// ============================================
+function ExportCsvButton({ entity, sedes }: { entity: 'cobranzas' | 'gastos'; sedes: Sede[] }) {
+  const supabase = createClient()
+  const [busy, setBusy] = useState(false)
+  const sedeById = Object.fromEntries(sedes.map(s => [s.id, s.nombre]))
+
+  const handleExport = async () => {
+    setBusy(true)
+    try {
+      const today = getArgentinaToday()
+      if (entity === 'cobranzas') {
+        const { data, error } = await supabase
+          .from('cobranzas')
+          .select('fecha, paciente, tratamiento, tipo_pago, monto, es_cuota, sede_id, notas, created_at')
+          .order('fecha', { ascending: false })
+          .limit(10000)
+        if (error) {
+          alert('Error al exportar: ' + error.message)
+          return
+        }
+        const rows = (data as unknown as Array<{
+          fecha: string; paciente: string; tratamiento: string | null; tipo_pago: string;
+          monto: number; es_cuota: boolean; sede_id: string | null; notas: string | null; created_at: string
+        }>) || []
+        downloadCsv(`cobranzas_${today}.csv`, rows, [
+          { header: 'Fecha', get: r => r.fecha },
+          { header: 'Paciente', get: r => r.paciente },
+          { header: 'Tratamiento', get: r => r.tratamiento },
+          { header: 'Medio de pago', get: r => r.tipo_pago },
+          { header: 'Monto', get: r => moneyCsv(r.monto) },
+          { header: 'Es cuota', get: r => r.es_cuota ? 'sí' : 'no' },
+          { header: 'Sede', get: r => r.sede_id ? (sedeById[r.sede_id] || '—') : 'General' },
+          { header: 'Notas', get: r => r.notas },
+          { header: 'Creado', get: r => r.created_at },
+        ])
+      } else {
+        const { data, error } = await supabase
+          .from('gastos')
+          .select('fecha, fecha_vencimiento, concepto, categoria, monto, tipo, estado_pago, sede_id, notas, is_recurring, created_at')
+          .order('fecha', { ascending: false })
+          .limit(10000)
+        if (error) {
+          alert('Error al exportar: ' + error.message)
+          return
+        }
+        const rows = (data as unknown as Array<{
+          fecha: string; fecha_vencimiento: string | null; concepto: string; categoria: string;
+          monto: number; tipo: string; estado_pago: string; sede_id: string | null; notas: string | null;
+          is_recurring: boolean | null; created_at: string
+        }>) || []
+        downloadCsv(`gastos_${today}.csv`, rows, [
+          { header: 'Fecha', get: r => r.fecha },
+          { header: 'Vencimiento', get: r => r.fecha_vencimiento },
+          { header: 'Concepto', get: r => r.concepto },
+          { header: 'Categoría', get: r => r.categoria },
+          { header: 'Monto', get: r => moneyCsv(r.monto) },
+          { header: 'Tipo', get: r => r.tipo },
+          { header: 'Estado', get: r => r.estado_pago },
+          { header: 'Sede', get: r => r.sede_id ? (sedeById[r.sede_id] || '—') : 'General' },
+          { header: 'Recurrente', get: r => r.is_recurring ? 'sí' : 'no' },
+          { header: 'Notas', get: r => r.notas },
+          { header: 'Creado', get: r => r.created_at },
+        ])
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <button
+      onClick={handleExport}
+      disabled={busy}
+      className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-border text-text-secondary text-sm font-medium rounded-lg hover:bg-beige transition-colors disabled:opacity-50"
+      title="Exportar a CSV"
+    >
+      <Download size={14} />
+      {busy ? 'Exportando...' : 'Exportar CSV'}
+    </button>
+  )
+}
+
