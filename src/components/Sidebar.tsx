@@ -20,23 +20,25 @@ interface NavItem {
   label: string
   href: string
   icon: React.ReactNode
+  perm: string
 }
 
-// Única lista de navegación. TODO fase-1: filtrar por `has_permission()`.
 const navItems: NavItem[] = [
-  { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard size={20} /> },
-  { label: 'Turnos', href: '/turnos', icon: <CalendarDays size={20} /> },
-  { label: 'Finanzas', href: '/finanzas', icon: <Wallet size={20} /> },
-  { label: 'Stock', href: '/stock', icon: <Package size={20} /> },
-  { label: 'Laboratorio', href: '/laboratorio', icon: <FlaskConical size={20} /> },
-  { label: 'Configuración', href: '/configuracion', icon: <Settings size={20} /> },
+  { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard size={20} />, perm: 'dashboard.view' },
+  { label: 'Turnos', href: '/turnos', icon: <CalendarDays size={20} />, perm: 'turnos.view' },
+  { label: 'Finanzas', href: '/finanzas', icon: <Wallet size={20} />, perm: 'cobranzas.view' },
+  { label: 'Stock', href: '/stock', icon: <Package size={20} />, perm: 'stock.view' },
+  { label: 'Laboratorio', href: '/laboratorio', icon: <FlaskConical size={20} />, perm: 'laboratorio.view' },
+  { label: 'Configuración', href: '/configuracion', icon: <Settings size={20} />, perm: 'settings.clinic' },
 ]
 
 export default function Sidebar() {
   const pathname = usePathname()
-  const { user, signOut } = useAuth()
+  const { user, signOut, hasPermission } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+
+  const visibleNav = navItems.filter(i => hasPermission(i.perm))
 
   return (
     <>
@@ -86,7 +88,7 @@ export default function Sidebar() {
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto py-3 px-2">
           <div className="space-y-0.5">
-            {navItems.map((item) => {
+            {visibleNav.map((item) => {
               const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
 
               return (

@@ -8,16 +8,24 @@ interface AuthContextType {
   user: User | null
   loading: boolean
   signOut: () => void
+  hasPermission: (perm: string) => boolean
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
   signOut: () => {},
+  hasPermission: () => false,
 })
 
 export function useAuth() {
   return useContext(AuthContext)
+}
+
+/** Hook de conveniencia: `const canEdit = useHasPermission('cobranzas.edit')` */
+export function useHasPermission(perm: string): boolean {
+  const { hasPermission } = useContext(AuthContext)
+  return hasPermission(perm)
 }
 
 function forceLogout() {
@@ -77,8 +85,12 @@ export function AuthProvider({ children, initialUser }: { children: React.ReactN
     forceLogout()
   }
 
+  const hasPermission = (perm: string): boolean => {
+    return !!user?.permissions?.includes(perm)
+  }
+
   return (
-    <AuthContext.Provider value={{ user, loading, signOut: handleSignOut }}>
+    <AuthContext.Provider value={{ user, loading, signOut: handleSignOut, hasPermission }}>
       {children}
     </AuthContext.Provider>
   )

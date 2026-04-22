@@ -1,12 +1,16 @@
 import { createClient } from '@/lib/supabase/server'
 import type { User } from '@/types/database'
+import { expandPermissions } from '@/lib/permissions'
 
 /**
  * Devuelve el usuario logueado con shape compatible con el `User` legacy.
- * Consulta `clinic_users` por `auth_user_id`. Si el usuario no tiene membership
+ * Consulta `clinic_users` + `roles` por `auth_user_id`. Si no hay membership
  * (todavía no hizo signup ni aceptó invitación) devuelve null.
  *
- * TODO fase-1: derivar `rol` desde `roles.permissions` en vez de hardcodear 'admin'.
+ * Adjunta `permissions: string[]` ya expandidos (los roles is_system obtienen
+ * todos los permisos del catálogo). El campo legacy `rol` se mantiene como
+ * `'admin'` si is_system y el nombre real del rol en caso contrario — la UI
+ * vieja que checkea `user.rol === 'admin'` sigue respondiendo razonablemente.
  */
 export async function getCurrentUser(): Promise<User | null> {
   const supabase = await createClient()
@@ -16,21 +20,39 @@ export async function getCurrentUser(): Promise<User | null> {
 
   const { data: profile } = await supabase
     .from('clinic_users')
-    .select('id, clinic_id, nombre, email, sede_id, activo, created_at')
+    .select('id, clinic_id, nombre, email, sede_id, activo, created_at, roles(id, nombre, is_system, permissions)')
     .eq('auth_user_id', authUser.id)
     .eq('activo', true)
     .maybeSingle()
 
   if (!profile) return null
 
+  const row = profile as unknown as {
+    id: string
+    clinic_id: string
+    nombre: string
+    email: string
+    sede_id: string | null
+    created_at: string
+    roles: { id: string; nombre: string; is_system: boolean; permissions: string[] } | null
+  }
+
+  const role = row.roles
+  const permissions = role ? expandPermissions(role) : []
+  const rolLegacy = role?.is_system ? 'admin' : (role?.nombre || 'empleado')
+
   return {
     id: authUser.id,
-    email: profile.email,
-    nombre: profile.nombre,
-    rol: 'admin',
-    sede_id: profile.sede_id,
-    clinic_id: profile.clinic_id,
-    created_at: profile.created_at,
+    email: row.email,
+    nombre: row.nombre,
+    rol: rolLegacy,
+    sede_id: row.sede_id,
+    clinic_id: row.clinic_id,
+    role_id: role?.id,
+    role_nombre: role?.nombre,
+    is_system_role: role?.is_system ?? false,
+    permissions,
+    created_at: row.created_at,
   }
 }
 

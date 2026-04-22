@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { useAuth } from '@/components/AuthProvider'
+import { useAuth, useHasPermission } from '@/components/AuthProvider'
 import {
   Building2,
   MapPin,
   Users,
+  Shield,
   Plus,
   Pencil,
   Trash2,
@@ -16,29 +17,42 @@ import {
   Palette,
   Link as LinkIcon,
   Copy,
+  Lock,
 } from 'lucide-react'
 import type { Sede, ClinicSettings, Invitation } from '@/types/database'
+import { PERMISSION_GROUPS } from '@/lib/permissions'
 
-type Tab = 'clinica' | 'sedes' | 'equipo'
+type Tab = 'clinica' | 'sedes' | 'equipo' | 'roles'
 
-const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-  { id: 'clinica', label: 'Clínica', icon: <Building2 size={16} /> },
-  { id: 'sedes', label: 'Sedes', icon: <MapPin size={16} /> },
-  { id: 'equipo', label: 'Equipo', icon: <Users size={16} /> },
+const TABS: { id: Tab; label: string; icon: React.ReactNode; perm: string }[] = [
+  { id: 'clinica', label: 'Clínica', icon: <Building2 size={16} />, perm: 'settings.clinic' },
+  { id: 'sedes', label: 'Sedes', icon: <MapPin size={16} />, perm: 'settings.sedes' },
+  { id: 'equipo', label: 'Equipo', icon: <Users size={16} />, perm: 'settings.users' },
+  { id: 'roles', label: 'Roles', icon: <Shield size={16} />, perm: 'settings.roles' },
 ]
 
 export default function ConfiguracionClient() {
-  const [activeTab, setActiveTab] = useState<Tab>('clinica')
+  const { hasPermission } = useAuth()
+  const visibleTabs = TABS.filter(t => hasPermission(t.perm))
+  const [activeTab, setActiveTab] = useState<Tab>(visibleTabs[0]?.id || 'clinica')
+
+  if (visibleTabs.length === 0) {
+    return (
+      <div className="bg-surface rounded-xl border border-border p-8 text-center text-sm text-text-muted">
+        No tenés acceso a Configuración.
+      </div>
+    )
+  }
 
   return (
     <div>
       <div className="mb-6">
         <h1 className="font-display text-2xl font-semibold text-text-primary mb-1">Configuración</h1>
-        <p className="text-sm text-text-secondary hidden sm:block">Clínica, sedes y equipo</p>
+        <p className="text-sm text-text-secondary hidden sm:block">Clínica, sedes, equipo y roles</p>
       </div>
 
       <div className="flex items-center gap-1 bg-surface border border-border rounded-lg p-1 mb-6 max-w-full overflow-x-auto">
-        {TABS.map(tab => (
+        {visibleTabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
@@ -54,15 +68,26 @@ export default function ConfiguracionClient() {
         ))}
       </div>
 
-      <div style={{ display: activeTab === 'clinica' ? 'block' : 'none' }}>
-        <ClinicaTab />
-      </div>
-      <div style={{ display: activeTab === 'sedes' ? 'block' : 'none' }}>
-        <SedesTab />
-      </div>
-      <div style={{ display: activeTab === 'equipo' ? 'block' : 'none' }}>
-        <EquipoTab />
-      </div>
+      {hasPermission('settings.clinic') && (
+        <div style={{ display: activeTab === 'clinica' ? 'block' : 'none' }}>
+          <ClinicaTab />
+        </div>
+      )}
+      {hasPermission('settings.sedes') && (
+        <div style={{ display: activeTab === 'sedes' ? 'block' : 'none' }}>
+          <SedesTab />
+        </div>
+      )}
+      {hasPermission('settings.users') && (
+        <div style={{ display: activeTab === 'equipo' ? 'block' : 'none' }}>
+          <EquipoTab />
+        </div>
+      )}
+      {hasPermission('settings.roles') && (
+        <div style={{ display: activeTab === 'roles' ? 'block' : 'none' }}>
+          <RolesTab />
+        </div>
+      )}
     </div>
   )
 }
@@ -630,6 +655,223 @@ function EquipoTab() {
           )}
         </div>
       </section>
+    </div>
+  )
+}
+
+// ============================================
+// Roles tab — CRUD de roles custom con switches
+// ============================================
+interface RoleRow {
+  id: string
+  nombre: string
+  is_system: boolean
+  permissions: string[]
+  created_at: string
+}
+
+function RolesTab() {
+  const supabase = createClient()
+  const [roles, setRoles] = useState<RoleRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [editing, setEditing] = useState<RoleRow | null>(null)
+  const [creating, setCreating] = useState(false)
+  const [form, setForm] = useState<{ nombre: string; permissions: string[] }>({ nombre: '', permissions: [] })
+  const [saving, setSaving] = useState(false)
+
+  const fetchRoles = useCallback(async () => {
+    setLoading(true)
+    const { data } = await supabase.from('roles').select('*').order('is_system', { ascending: false }).order('nombre')
+    setRoles((data as unknown as RoleRow[]) || [])
+    setLoading(false)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => { fetchRoles() }, [fetchRoles])
+
+  const openCreate = () => {
+    setEditing(null)
+    setForm({ nombre: '', permissions: [] })
+    setCreating(true)
+  }
+
+  const openEdit = (r: RoleRow) => {
+    if (r.is_system) return // no se pueden editar roles is_system
+    setEditing(r)
+    setForm({ nombre: r.nombre, permissions: [...r.permissions] })
+    setCreating(true)
+  }
+
+  const togglePerm = (key: string) => {
+    setForm(f => ({
+      ...f,
+      permissions: f.permissions.includes(key)
+        ? f.permissions.filter(p => p !== key)
+        : [...f.permissions, key],
+    }))
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSaving(true)
+    if (editing) {
+      const { error } = await supabase
+        .from('roles')
+        .update({ nombre: form.nombre.trim(), permissions: form.permissions })
+        .eq('id', editing.id)
+      if (error) alert('Error al guardar: ' + error.message)
+    } else {
+      const { error } = await supabase
+        .from('roles')
+        .insert({ nombre: form.nombre.trim(), is_system: false, permissions: form.permissions })
+      if (error) alert('Error al crear: ' + error.message)
+    }
+    setSaving(false)
+    setCreating(false)
+    fetchRoles()
+  }
+
+  const handleDelete = async (r: RoleRow) => {
+    if (r.is_system) return
+    if (!confirm(`¿Eliminar el rol "${r.nombre}"? Los miembros con este rol quedan sin permisos hasta reasignarlos.`)) return
+    const { error } = await supabase.from('roles').delete().eq('id', r.id)
+    if (error) {
+      alert('Error al eliminar: ' + error.message + '\n\nProbablemente hay miembros o invitaciones usando este rol.')
+      return
+    }
+    fetchRoles()
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-2">
+        <button
+          onClick={openCreate}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-green-primary hover:bg-green-dark text-white text-sm font-medium rounded-lg transition-colors"
+        >
+          <Plus size={16} />
+          Nuevo rol
+        </button>
+      </div>
+
+      {creating && (
+        <form onSubmit={handleSubmit} className="bg-surface rounded-xl border border-border p-5 max-w-3xl">
+          <h3 className="text-sm font-semibold text-text-primary mb-4">
+            {editing ? `Editar rol: ${editing.nombre}` : 'Nuevo rol'}
+          </h3>
+          <div className="mb-4">
+            <label className="block text-xs font-medium text-text-secondary mb-1">Nombre del rol *</label>
+            <input
+              type="text"
+              value={form.nombre}
+              onChange={e => setForm({ ...form, nombre: e.target.value })}
+              required
+              placeholder="ej. Recepcionista, Asistente"
+              className="w-full max-w-sm border border-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-green-primary"
+            />
+          </div>
+
+          <div className="space-y-4">
+            {Object.entries(PERMISSION_GROUPS).map(([groupKey, group]) => (
+              <fieldset key={groupKey} className="border border-border rounded-lg p-3">
+                <legend className="px-2 text-xs font-semibold text-text-primary uppercase tracking-wide">{group.label}</legend>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
+                  {group.perms.map(p => (
+                    <label key={p.key} className="flex items-center gap-2 text-sm text-text-secondary cursor-pointer hover:text-text-primary">
+                      <input
+                        type="checkbox"
+                        checked={form.permissions.includes(p.key)}
+                        onChange={() => togglePerm(p.key)}
+                        className="rounded border-border"
+                      />
+                      <span>{p.label}</span>
+                      <span className="text-[10px] font-mono text-text-muted ml-auto">{p.key}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2 mt-5">
+            <button
+              type="submit"
+              disabled={saving || !form.nombre.trim()}
+              className="px-4 py-2 bg-green-primary hover:bg-green-dark text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+            >
+              {saving ? 'Guardando...' : 'Guardar'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setCreating(false)}
+              className="px-4 py-2 border border-border text-text-secondary text-sm font-medium rounded-lg hover:bg-beige transition-colors"
+            >
+              Cancelar
+            </button>
+          </div>
+        </form>
+      )}
+
+      <div className="bg-surface rounded-xl border border-border overflow-hidden">
+        {loading ? (
+          <div className="p-8 text-center text-text-muted text-sm">Cargando...</div>
+        ) : roles.length === 0 ? (
+          <div className="p-8 text-center text-text-muted text-sm">No hay roles definidos.</div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-beige/50">
+                <th className="text-left px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide">Nombre</th>
+                <th className="text-left px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide">Permisos</th>
+                <th className="text-center px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide w-32">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {roles.map(r => (
+                <tr key={r.id} className="border-b border-border-light hover:bg-beige/30 transition-colors">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-text-primary font-medium">{r.nombre}</span>
+                      {r.is_system && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-purple-light text-purple">
+                          <Lock size={10} /> sistema
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-text-secondary text-xs">
+                    {r.is_system
+                      ? 'Todos los permisos'
+                      : r.permissions.length === 0
+                        ? 'Sin permisos asignados'
+                        : `${r.permissions.length} permiso${r.permissions.length !== 1 ? 's' : ''}`}
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      <button
+                        onClick={() => openEdit(r)}
+                        disabled={r.is_system}
+                        className="p-1.5 text-text-muted hover:text-text-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                        title={r.is_system ? 'Los roles de sistema no se pueden editar' : 'Editar'}
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(r)}
+                        disabled={r.is_system}
+                        className="p-1.5 text-text-muted hover:text-red transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                        title={r.is_system ? 'Los roles de sistema no se pueden eliminar' : 'Eliminar'}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   )
 }

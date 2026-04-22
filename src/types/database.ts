@@ -118,6 +118,10 @@ export interface User {
   rol: UserRole
   sede_id: string | null
   clinic_id?: string
+  role_id?: string
+  role_nombre?: string
+  is_system_role?: boolean
+  permissions?: string[]
   created_at: string
 }
 
