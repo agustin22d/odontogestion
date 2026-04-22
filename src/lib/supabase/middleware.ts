@@ -4,9 +4,19 @@ import { NextResponse, type NextRequest } from 'next/server'
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
 
+  // Env vars ausentes en Vercel disparan MIDDLEWARE_INVOCATION_FAILED si
+  // createServerClient recibe undefined. Fallar blando deja pasar el request
+  // y devuelve HTML legible en vez de un 500 opaco.
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!supabaseUrl || !supabaseAnon) {
+    console.error('[middleware] NEXT_PUBLIC_SUPABASE_URL / ANON_KEY no configurados')
+    return supabaseResponse
+  }
+
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    supabaseUrl,
+    supabaseAnon,
     {
       cookies: {
         getAll() {
