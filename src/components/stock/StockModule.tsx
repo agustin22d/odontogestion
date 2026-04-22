@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/components/AuthProvider'
 import type { Sede, ProductoStock, MovimientoStock } from '@/types/database'
@@ -16,6 +16,10 @@ import {
   X,
   Loader2,
   Settings,
+  ShoppingCart,
+  Copy,
+  MessageCircle,
+  Check,
 } from 'lucide-react'
 
 // ── Types ────────────────────────────────────────────
@@ -109,12 +113,13 @@ export default function StockModule() {
     setShowModal(true)
   }
 
-  const isAdmin = user?.rol === 'admin'
-  const canManage = isAdmin || user?.rol === 'rolD' // admin y rolD pueden registrar entrada/salida
+  const { hasPermission } = useAuth()
+  const canManage = hasPermission('stock.movimientos.create')
+  const canManageProductos = hasPermission('stock.productos.manage')
   const tabs: { id: ViewTab; label: string }[] = [
     { id: 'resumen', label: 'Stock Actual' },
     { id: 'movimientos', label: 'Movimientos' },
-    ...(isAdmin ? [{ id: 'productos' as ViewTab, label: 'Productos' }] : []), // solo admin gestiona productos
+    ...(canManageProductos ? [{ id: 'productos' as ViewTab, label: 'Productos' }] : []),
   ]
 
   if (loading) {
@@ -205,7 +210,7 @@ export default function StockModule() {
           setProductoFilter={setProductoFilter}
         />
       </div>
-      {canManage && (
+      {canManageProductos && (
         <div style={{ display: activeTab === 'productos' ? 'block' : 'none' }}>
           <ProductosView
             productos={todosProductos}
@@ -243,6 +248,7 @@ function StockResumen({
   setProductoFilter: (v: string) => void
 }) {
   const [busqueda, setBusqueda] = useState('')
+  const [showPedido, setShowPedido] = useState(false)
 
   const filtered = stockMap.filter(s => {
     if (sedeFilter !== 'todas' && s.sede.id !== sedeFilter) return false
@@ -254,6 +260,8 @@ function StockResumen({
   // Alerts split
   const sinStock = stockMap.filter(s => s.cantidad <= 0)
   const stockBajo = stockMap.filter(s => s.cantidad > 0 && s.cantidad <= s.producto.stock_minimo)
+  const necesitaReposicion = [...sinStock, ...stockBajo]
+    .filter(s => sedeFilter === 'todas' || s.sede.id === sedeFilter)
 
   // Sort: by sede name, then product name
   const sorted = [...filtered].sort((a, b) => {
@@ -284,7 +292,24 @@ function StockResumen({
             </p>
           </div>
         </div>
+        {necesitaReposicion.length > 0 && (
+          <button
+            onClick={() => setShowPedido(true)}
+            className="ml-auto inline-flex items-center gap-2 px-4 py-2 bg-green-primary hover:bg-green-dark text-white text-sm font-medium rounded-lg transition-colors self-center"
+          >
+            <ShoppingCart size={16} />
+            Generar pedido ({necesitaReposicion.length})
+          </button>
+        )}
       </div>
+
+      {showPedido && (
+        <PedidoReposicionModal
+          items={necesitaReposicion}
+          sedes={sedes}
+          onClose={() => setShowPedido(false)}
+        />
+      )}
 
       {/* Search */}
       <div className="flex items-center gap-3">
@@ -807,4 +832,167 @@ function formatDate(dateStr: string): string {
 
 function prodLabel(p: ProductoStock): string {
   return p.medida ? `${p.nombre} ${p.medida}` : p.nombre
+}
+
+// ── Pedido de reposición ────────────────────────────
+
+interface PedidoItem {
+  producto: ProductoStock
+  sede: Sede
+  cantidad: number
+}
+
+function PedidoReposicionModal({
+  items,
+  sedes,
+  onClose,
+}: {
+  items: PedidoItem[]
+  sedes: Sede[]
+  onClose: () => void
+}) {
+  // Cantidades sugeridas: llenar hasta 2× el mínimo.
+  const defaultQty = (it: PedidoItem) => Math.max(it.producto.stock_minimo * 2 - it.cantidad, it.producto.stock_minimo)
+
+  const [cantidades, setCantidades] = useState<Record<string, number>>(() => {
+    const out: Record<string, number> = {}
+    items.forEach(it => {
+      const key = `${it.producto.id}-${it.sede.id}`
+      out[key] = defaultQty(it)
+    })
+    return out
+  })
+  const [whatsappNumero, setWhatsappNumero] = useState('')
+  const [copied, setCopied] = useState(false)
+
+  const texto = useMemo(() => {
+    const hoy = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })
+    const lineas: string[] = []
+    lineas.push(`*Pedido de reposición — ${hoy}*`)
+    lineas.push('')
+
+    // Agrupar por sede
+    const porSede: Record<string, PedidoItem[]> = {}
+    items.forEach(it => {
+      if (!porSede[it.sede.id]) porSede[it.sede.id] = []
+      porSede[it.sede.id].push(it)
+    })
+
+    sedes.forEach(sede => {
+      const itsSede = porSede[sede.id]
+      if (!itsSede || itsSede.length === 0) return
+      lineas.push(`📍 *${sede.nombre}*`)
+      itsSede.forEach(it => {
+        const key = `${it.producto.id}-${it.sede.id}`
+        const qty = cantidades[key] ?? defaultQty(it)
+        if (qty > 0) {
+          const unidad = it.producto.unidad || 'unidad'
+          lineas.push(`  • ${prodLabel(it.producto)} — ${qty} ${unidad}${qty !== 1 ? 's' : ''}  _(actual: ${it.cantidad}, mín: ${it.producto.stock_minimo})_`)
+        }
+      })
+      lineas.push('')
+    })
+
+    lineas.push('_Enviado desde Odonto Gestión_')
+    return lineas.join('\n')
+  }, [items, sedes, cantidades])
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(texto)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // fallback: select textarea manually
+      alert('Copiá el texto manualmente del recuadro')
+    }
+  }
+
+  const handleWhatsapp = () => {
+    const numLimpio = whatsappNumero.replace(/\D/g, '')
+    const base = numLimpio ? `https://wa.me/${numLimpio}` : 'https://wa.me/'
+    const url = `${base}?text=${encodeURIComponent(texto)}`
+    window.open(url, '_blank')
+  }
+
+  const total = Object.values(cantidades).reduce((s, n) => s + (n > 0 ? 1 : 0), 0)
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-surface rounded-xl border border-border w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-text-primary flex items-center gap-2">
+              <ShoppingCart size={18} className="text-green-primary" />
+              Pedido de reposición
+            </h2>
+            <p className="text-xs text-text-muted mt-0.5">{total} producto{total !== 1 ? 's' : ''} seleccionado{total !== 1 ? 's' : ''}</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-beige rounded-lg text-text-muted">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Items list (editable quantities) */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-2">
+          {items.map(it => {
+            const key = `${it.producto.id}-${it.sede.id}`
+            return (
+              <div key={key} className="flex items-center gap-3 py-2 border-b border-border-light last:border-0">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-text-primary truncate">{prodLabel(it.producto)}</p>
+                  <p className="text-xs text-text-muted">
+                    {it.sede.nombre} · actual: {it.cantidad} · mínimo: {it.producto.stock_minimo}
+                  </p>
+                </div>
+                <input
+                  type="number"
+                  min="0"
+                  value={cantidades[key] ?? 0}
+                  onChange={e => setCantidades({ ...cantidades, [key]: Math.max(0, parseInt(e.target.value) || 0) })}
+                  className="w-20 border border-border rounded-lg px-2 py-1.5 text-sm text-right bg-white focus:outline-none focus:border-green-primary"
+                />
+                <span className="text-xs text-text-muted w-16">{it.producto.unidad}</span>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Preview */}
+        <div className="px-5 py-3 border-t border-border bg-beige/30">
+          <p className="text-xs font-medium text-text-muted mb-1">Vista previa del mensaje:</p>
+          <pre className="text-xs text-text-secondary whitespace-pre-wrap bg-white border border-border rounded-lg p-3 max-h-32 overflow-y-auto font-sans">
+            {texto}
+          </pre>
+        </div>
+
+        {/* Actions */}
+        <div className="px-5 py-4 border-t border-border flex flex-col sm:flex-row items-stretch sm:items-center gap-2 bg-surface">
+          <input
+            type="tel"
+            value={whatsappNumero}
+            onChange={e => setWhatsappNumero(e.target.value)}
+            placeholder="Nº WhatsApp del proveedor (opcional)"
+            className="flex-1 border border-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-green-primary"
+          />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleCopy}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-border text-text-secondary text-sm font-medium rounded-lg hover:bg-beige transition-colors"
+            >
+              {copied ? <><Check size={16} className="text-green-primary" /> Copiado</> : <><Copy size={16} /> Copiar</>}
+            </button>
+            <button
+              onClick={handleWhatsapp}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-green-primary hover:bg-green-dark text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              <MessageCircle size={16} />
+              WhatsApp
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 }
