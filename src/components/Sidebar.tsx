@@ -34,7 +34,7 @@ const navItems: NavItem[] = [
   { label: 'Configuración', href: '/configuracion', icon: <Settings size={20} />, perm: 'settings.clinic' },
 ]
 
-export default function Sidebar() {
+export default function Sidebar({ logoUrl }: { logoUrl?: string | null }) {
   const pathname = usePathname()
   const { user, signOut, hasPermission } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
@@ -69,8 +69,13 @@ export default function Sidebar() {
       >
         {/* Header */}
         <div className={`flex items-center gap-2 px-4 h-[60px] border-b border-border shrink-0 ${collapsed ? 'justify-center' : ''}`}>
-          <div className="w-2.5 h-2.5 rounded-full bg-green-primary shrink-0" />
-          {!collapsed && (
+          {logoUrl ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img src={logoUrl} alt="Logo" className="w-8 h-8 object-contain shrink-0" />
+          ) : (
+            <div className="w-2.5 h-2.5 rounded-full bg-green-primary shrink-0" />
+          )}
+          {!collapsed && !logoUrl && (
             <div className="flex items-center gap-1 min-w-0">
               <span className="text-[11px] font-medium tracking-[0.15em] uppercase text-text-primary truncate">
                 Odonto

@@ -18,6 +18,9 @@ import {
   Link as LinkIcon,
   Copy,
   Lock,
+  Upload,
+  Image as ImageIcon,
+  Loader2,
 } from 'lucide-react'
 import type { Sede, ClinicSettings, Invitation } from '@/types/database'
 import { PERMISSION_GROUPS } from '@/lib/permissions'
@@ -217,15 +220,11 @@ function ClinicaTab() {
             </div>
           </div>
           <div className="sm:col-span-2">
-            <label className="block text-xs font-medium text-text-secondary mb-1">URL del logo (opcional)</label>
-            <input
-              type="url"
-              value={settings.logo_url || ''}
-              onChange={e => setSettings({ ...settings, logo_url: e.target.value || null })}
-              placeholder="https://..."
-              className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-green-primary"
+            <LogoUploader
+              clinicId={user?.clinic_id || ''}
+              currentUrl={settings.logo_url}
+              onChanged={url => setSettings({ ...settings, logo_url: url })}
             />
-            <p className="text-xs text-text-muted mt-1">TODO: upload a Supabase Storage en lugar de URL manual (Fase 2).</p>
           </div>
         </div>
       </section>
@@ -238,6 +237,112 @@ function ClinicaTab() {
         {saving ? 'Guardando...' : 'Guardar cambios'}
       </button>
     </form>
+  )
+}
+
+// ── Logo uploader ───────────────────────────────────
+
+function LogoUploader({
+  clinicId, currentUrl, onChanged,
+}: {
+  clinicId: string
+  currentUrl: string | null
+  onChanged: (url: string | null) => void
+}) {
+  const supabase = createClient()
+  const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !clinicId) return
+    setError(null)
+    setUploading(true)
+
+    // Path convención: <clinic_id>/logo.<ext> — sobrescribe el anterior.
+    const ext = file.name.split('.').pop()?.toLowerCase() || 'png'
+    const path = `${clinicId}/logo.${ext}`
+
+    const { error: upErr } = await supabase.storage
+      .from('clinic-logos')
+      .upload(path, file, { upsert: true, cacheControl: '0' })
+
+    if (upErr) {
+      setError(upErr.message)
+      setUploading(false)
+      return
+    }
+
+    const { data } = supabase.storage.from('clinic-logos').getPublicUrl(path)
+    // Cache-busting: append timestamp para que el browser tome la versión nueva.
+    const bustedUrl = `${data.publicUrl}?v=${Date.now()}`
+    onChanged(bustedUrl)
+    setUploading(false)
+
+    // Guardar inmediatamente en clinic_settings (sin esperar al "Guardar cambios")
+    await supabase.from('clinic_settings').update({ logo_url: bustedUrl }).eq('clinic_id', clinicId)
+  }
+
+  const handleRemove = async () => {
+    if (!clinicId) return
+    if (!confirm('¿Eliminar el logo?')) return
+    setError(null)
+    setUploading(true)
+
+    // Intentar borrar todas las variantes comunes del archivo.
+    const paths = ['png', 'jpg', 'jpeg', 'svg', 'webp'].map(e => `${clinicId}/logo.${e}`)
+    await supabase.storage.from('clinic-logos').remove(paths)
+    await supabase.from('clinic_settings').update({ logo_url: null }).eq('clinic_id', clinicId)
+    onChanged(null)
+    setUploading(false)
+  }
+
+  return (
+    <div>
+      <label className="block text-xs font-medium text-text-secondary mb-2">Logo de la clínica</label>
+      <div className="flex items-center gap-4">
+        {/* Preview */}
+        <div className="w-20 h-20 rounded-lg border-2 border-dashed border-border bg-white flex items-center justify-center overflow-hidden shrink-0">
+          {currentUrl ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img src={currentUrl} alt="Logo" className="w-full h-full object-contain" />
+          ) : (
+            <ImageIcon size={24} className="text-text-muted" />
+          )}
+        </div>
+        {/* Actions */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <label className={`inline-flex items-center gap-2 px-3 py-1.5 border border-border text-sm text-text-secondary rounded-lg cursor-pointer hover:bg-beige transition-colors ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
+              {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+              {uploading ? 'Subiendo...' : currentUrl ? 'Cambiar logo' : 'Subir logo'}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                onChange={handleFile}
+                className="hidden"
+                disabled={uploading}
+              />
+            </label>
+            {currentUrl && (
+              <button
+                type="button"
+                onClick={handleRemove}
+                disabled={uploading}
+                className="inline-flex items-center gap-2 px-3 py-1.5 border border-red/20 text-red text-sm rounded-lg hover:bg-red-light transition-colors disabled:opacity-50"
+              >
+                <Trash2 size={14} />
+                Quitar
+              </button>
+            )}
+          </div>
+          <p className="text-xs text-text-muted mt-1.5">PNG / JPG / SVG / WebP · máx 2 MB</p>
+          {error && (
+            <p className="text-xs text-red mt-1">{error}</p>
+          )}
+        </div>
+      </div>
+    </div>
   )
 }
 
