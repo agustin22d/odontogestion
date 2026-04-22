@@ -20,12 +20,32 @@ export default function SignupPage() {
     setError('')
     setLoading(true)
 
-    const { error: signUpError } = await supabase.auth.signUp({
-      email: email.trim(),
+    const cleanEmail = email.trim()
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      email: cleanEmail,
       password,
     })
-    if (signUpError) {
-      setError(signUpError.message || 'No pudimos crear la cuenta. Probá con otro email.')
+
+    // Si "Confirm email" está ON en Supabase, signUp devuelve el user pero
+    // sin session — auth.uid() quedaría NULL y el RPC tiraría not_authenticated.
+    // Intentamos un login directo para forzar la sesión; si falla, pedimos al
+    // usuario que confirme el mail primero.
+    if (!signUpData?.session) {
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password,
+      })
+      if (signInError) {
+        if (signUpError) {
+          setError(signUpError.message)
+        } else {
+          setError('Revisá tu email para confirmar la cuenta antes de crear la clínica.')
+        }
+        setLoading(false)
+        return
+      }
+    } else if (signUpError) {
+      setError(signUpError.message)
       setLoading(false)
       return
     }
