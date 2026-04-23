@@ -547,6 +547,7 @@ function EquipoTab() {
   const [form, setForm] = useState({ email: '', role_id: '' })
   const [saving, setSaving] = useState(false)
   const [newLink, setNewLink] = useState<string | null>(null)
+  const [emailStatus, setEmailStatus] = useState<{ sent: boolean; error: string | null } | null>(null)
 
   const origin = typeof window !== 'undefined' ? window.location.origin : ''
 
@@ -584,22 +585,24 @@ function EquipoTab() {
     if (!form.email || !form.role_id || !user?.clinic_id) return
     setSaving(true)
     setNewLink(null)
-    const { data, error } = await supabase
-      .from('invitations')
-      .insert({
+    setEmailStatus(null)
+    const res = await fetch('/api/invitations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
         email: form.email.trim().toLowerCase(),
         role_id: form.role_id,
-        invited_by: user.id,
-      })
-      .select('token')
-      .single()
+      }),
+    })
     setSaving(false)
-    if (error) {
-      alert('Error al crear la invitación: ' + error.message)
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      alert('Error al crear la invitación: ' + (err.error || res.statusText))
       return
     }
-    const token = (data as unknown as { token: string }).token
-    setNewLink(`${origin}/invite/${token}`)
+    const data = await res.json() as { token: string; link: string; emailSent: boolean; emailError: string | null }
+    setNewLink(data.link)
+    setEmailStatus({ sent: data.emailSent, error: data.emailError })
     setForm({ email: '', role_id: defaultRoleId })
     setShowForm(false)
     fetchAll()
@@ -664,20 +667,28 @@ function EquipoTab() {
             disabled={saving}
             className="mt-4 px-4 py-2 bg-green-primary hover:bg-green-dark text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
           >
-            {saving ? 'Creando...' : 'Crear link de invitación'}
+            {saving ? 'Creando...' : 'Crear y enviar invitación'}
           </button>
           <p className="text-xs text-text-muted mt-2">
-            Se genera un link único. Copialo y envialo a la persona por email o WhatsApp.
-            TODO: envío automático por email en Fase 2.
+            Se manda un email automático con el link. Si Resend no está configurado igual generamos el link para que lo copies a mano.
           </p>
         </form>
       )}
 
       {newLink && (
-        <div className="bg-blue-light border border-blue/20 rounded-lg p-4 flex items-start gap-3">
-          <LinkIcon size={16} className="text-blue shrink-0 mt-0.5" />
+        <div className={`border rounded-lg p-4 flex items-start gap-3 ${emailStatus?.sent ? 'bg-green-light border-green-primary/20' : 'bg-blue-light border-blue/20'}`}>
+          <LinkIcon size={16} className={`shrink-0 mt-0.5 ${emailStatus?.sent ? 'text-green-primary' : 'text-blue'}`} />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-text-primary mb-1">Link de invitación listo</p>
+            <p className="text-sm font-medium text-text-primary mb-1">
+              {emailStatus?.sent
+                ? 'Email enviado ✓'
+                : emailStatus
+                  ? 'Email NO enviado — copiá el link a mano'
+                  : 'Link de invitación listo'}
+            </p>
+            {emailStatus && !emailStatus.sent && emailStatus.error && (
+              <p className="text-[11px] text-red mb-1">{emailStatus.error}</p>
+            )}
             <p className="text-xs font-mono text-text-secondary break-all">{newLink}</p>
           </div>
           <button

@@ -26,6 +26,7 @@ import {
 import type { Sede, Cobranza } from '@/types/database'
 import { getArgentinaToday } from '@/lib/utils/dates'
 import { downloadCsv, moneyCsv } from '@/lib/utils/csv'
+import PacienteTypeahead from '@/components/PacienteTypeahead'
 
 type CobranzaConSede = Cobranza & { sedes: Sede }
 
@@ -421,6 +422,8 @@ function CobranzasTab({ syncKey, sedes }: { syncKey: number; sedes: Sede[] }) {
 
   const [formData, setFormData] = useState({
     paciente: '',
+    paciente_apellido: null as string | null,
+    patient_id: null as string | null,
     tratamiento: '',
     monto: '',
     tipo_pago: 'efectivo' as string,
@@ -483,13 +486,35 @@ function CobranzasTab({ syncKey, sedes }: { syncKey: number; sedes: Sede[] }) {
     }
 
     setSaving(true)
+
+    // Resolver patient_id: si el typeahead no linkeó a una ficha existente,
+    // crear (o buscar match exacto) via RPC para no perder el linkeo.
+    let patient_id = formData.patient_id
+    if (!patient_id && formData.paciente.trim()) {
+      const { data: pid, error: rpcErr } = await supabase.rpc('find_or_create_paciente', {
+        p_nombre: formData.paciente.trim(),
+        p_apellido: formData.paciente_apellido?.trim() || null,
+      })
+      if (rpcErr) {
+        alert('No se pudo crear la ficha del paciente: ' + rpcErr.message)
+        setSaving(false)
+        return
+      }
+      patient_id = pid as unknown as string
+    }
+
+    const pacienteNombreCompleto = formData.paciente_apellido
+      ? `${formData.paciente.trim()} ${formData.paciente_apellido.trim()}`
+      : formData.paciente.trim()
+
     // Schema nuevo: sede_id singular (nullable = general). Si el UI histórico
     // elige varias sedes se guarda la primera; multi-sede real vuelve en Fase 2.
     const { error } = await supabase.from('cobranzas').insert({
       fecha,
       sede_id: sedeIds.length > 0 ? sedeIds[0] : null,
       created_by: user?.id,
-      paciente: formData.paciente,
+      paciente: pacienteNombreCompleto,
+      patient_id,
       tratamiento: formData.tratamiento || 'Sin especificar',
       tipo_pago: formData.tipo_pago,
       monto: montoARS,
@@ -500,7 +525,7 @@ function CobranzasTab({ syncKey, sedes }: { syncKey: number; sedes: Sede[] }) {
     if (error) {
       alert('Error al guardar: ' + error.message)
     } else {
-      setFormData({ ...formData, paciente: '', tratamiento: '', monto: '', monto_usd: '', tipo_cambio: '', es_cuota: false, notas: '', moneda: 'ARS' })
+      setFormData({ ...formData, paciente: '', paciente_apellido: null, patient_id: null, tratamiento: '', monto: '', monto_usd: '', tipo_cambio: '', es_cuota: false, notas: '', moneda: 'ARS' })
       setShowForm(false)
       fetchCobranzas()
     }
@@ -606,11 +631,18 @@ function CobranzasTab({ syncKey, sedes }: { syncKey: number; sedes: Sede[] }) {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
               <label className="block text-xs font-medium text-text-secondary mb-1">Paciente *</label>
-              <input
-                type="text"
-                value={formData.paciente}
-                onChange={e => setFormData({ ...formData, paciente: e.target.value })}
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-white text-text-primary focus:outline-none focus:border-green-primary"
+              <PacienteTypeahead
+                value={{
+                  patient_id: formData.patient_id,
+                  nombre: formData.paciente,
+                  apellido: formData.paciente_apellido,
+                }}
+                onChange={v => setFormData({
+                  ...formData,
+                  patient_id: v.patient_id,
+                  paciente: v.nombre,
+                  paciente_apellido: v.apellido,
+                })}
                 required
               />
             </div>

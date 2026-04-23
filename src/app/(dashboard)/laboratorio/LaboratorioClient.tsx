@@ -21,6 +21,16 @@ import {
   Search,
 } from 'lucide-react'
 import type { EstadoLaboratorio, LaboratorioCaso, LaboratorioHistorial, Sede } from '@/types/database'
+import PacienteTypeahead from '@/components/PacienteTypeahead'
+
+type PacienteForm = { paciente: string; paciente_apellido: string | null; patient_id: string | null }
+type CasoFormData = PacienteForm & {
+  sede_id: string
+  profesional: string
+  tipo: string
+  laboratorio: string
+  notas: string
+}
 
 // Config de estados
 const ESTADOS: { id: EstadoLaboratorio; label: string; icon: React.ReactNode; color: string; bg: string }[] = [
@@ -144,35 +154,48 @@ export default function LaboratorioClient() {
     fetchConteos()
   }
 
-  const handleCreate = async (form: { paciente: string; sede_id: string; profesional: string; tipo: string; laboratorio: string; notas: string }) => {
-    const { error } = await supabase.from('laboratorio_casos').insert({
-      paciente: form.paciente.trim(),
-      sede_id: form.sede_id || null,
-      profesional: form.profesional.trim() || null,
-      tipo: form.tipo || 'corona',
-      laboratorio: form.laboratorio.trim() || null,
-      notas: form.notas.trim() || null,
-      estado: 'escaneado',
-      created_by: user?.id || null,
+  const resolvePatientId = async (form: PacienteForm): Promise<string | null> => {
+    if (form.patient_id) return form.patient_id
+    if (!form.paciente.trim()) return null
+    const { data: pid, error: rpcErr } = await supabase.rpc('find_or_create_paciente', {
+      p_nombre: form.paciente.trim(),
+      p_apellido: form.paciente_apellido?.trim() || null,
     })
+    if (rpcErr) {
+      console.error('Error find_or_create_paciente:', rpcErr)
+      return null
+    }
+    return pid as unknown as string
+  }
+
+  const handleCreate = async (form: CasoFormData) => {
+    const patient_id = await resolvePatientId(form)
+    const pacienteFull = form.paciente_apellido
+      ? `${form.paciente.trim()} ${form.paciente_apellido.trim()}`
+      : form.paciente.trim()
+    const { data: inserted, error } = await supabase
+      .from('laboratorio_casos')
+      .insert({
+        paciente: pacienteFull,
+        patient_id,
+        sede_id: form.sede_id || null,
+        profesional: form.profesional.trim() || null,
+        tipo: form.tipo || 'corona',
+        laboratorio: form.laboratorio.trim() || null,
+        notas: form.notas.trim() || null,
+        estado: 'escaneado',
+        created_by: user?.id || null,
+      })
+      .select('id')
+      .single()
     if (error) {
       console.error('Error creating caso:', error)
       return false
     }
 
-    // Insert initial historial
-    // We need the ID — fetch it
-    const { data: newCaso } = await supabase
-      .from('laboratorio_casos')
-      .select('id')
-      .eq('paciente', form.paciente.trim())
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single()
-
-    if (newCaso) {
+    if (inserted) {
       await supabase.from('laboratorio_historial').insert({
-        caso_id: (newCaso as unknown as { id: string }).id,
+        caso_id: (inserted as unknown as { id: string }).id,
         estado_anterior: null,
         estado_nuevo: 'escaneado',
         user_id: user?.id || null,
@@ -185,11 +208,16 @@ export default function LaboratorioClient() {
     return true
   }
 
-  const handleUpdate = async (id: string, form: { paciente: string; sede_id: string; profesional: string; tipo: string; laboratorio: string; notas: string }) => {
+  const handleUpdate = async (id: string, form: CasoFormData) => {
+    const patient_id = await resolvePatientId(form)
+    const pacienteFull = form.paciente_apellido
+      ? `${form.paciente.trim()} ${form.paciente_apellido.trim()}`
+      : form.paciente.trim()
     const { error } = await supabase
       .from('laboratorio_casos')
       .update({
-        paciente: form.paciente.trim(),
+        paciente: pacienteFull,
+        patient_id,
         sede_id: form.sede_id || null,
         profesional: form.profesional.trim() || null,
         tipo: form.tipo || 'corona',
@@ -463,16 +491,24 @@ function CasoFormModal({ title, sedes, initial, onClose, onSubmit, onDelete }: {
   sedes: Sede[]
   initial?: LaboratorioCaso
   onClose: () => void
-  onSubmit: (form: { paciente: string; sede_id: string; profesional: string; tipo: string; laboratorio: string; notas: string }) => Promise<boolean>
+  onSubmit: (form: CasoFormData) => Promise<boolean>
   onDelete?: () => void
 }) {
-  const [form, setForm] = useState({
-    paciente: initial?.paciente || '',
-    sede_id: initial?.sede_id || '',
-    profesional: initial?.profesional || '',
-    tipo: initial?.tipo || 'corona',
-    laboratorio: initial?.laboratorio || '',
-    notas: initial?.notas || '',
+  const [form, setForm] = useState<CasoFormData>(() => {
+    // initial.paciente puede venir como "Nombre Apellido" — separamos best-effort.
+    const partes = (initial?.paciente || '').trim().split(/\s+/)
+    const nombre = partes[0] || ''
+    const apellido = partes.slice(1).join(' ') || null
+    return {
+      paciente: nombre,
+      paciente_apellido: apellido,
+      patient_id: initial?.patient_id || null,
+      sede_id: initial?.sede_id || '',
+      profesional: initial?.profesional || '',
+      tipo: initial?.tipo || 'corona',
+      laboratorio: initial?.laboratorio || '',
+      notas: initial?.notas || '',
+    }
   })
   const [saving, setSaving] = useState(false)
 
@@ -495,13 +531,19 @@ function CasoFormModal({ title, sedes, initial, onClose, onSubmit, onDelete }: {
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <label className="block text-sm font-medium text-text-secondary mb-1">Paciente *</label>
-          <input
-            type="text"
+          <PacienteTypeahead
+            value={{
+              patient_id: form.patient_id,
+              nombre: form.paciente,
+              apellido: form.paciente_apellido,
+            }}
+            onChange={v => setForm({
+              ...form,
+              patient_id: v.patient_id,
+              paciente: v.nombre,
+              paciente_apellido: v.apellido,
+            })}
             required
-            value={form.paciente}
-            onChange={e => setForm({ ...form, paciente: e.target.value })}
-            className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-white focus:ring-2 focus:ring-green-primary/20 focus:border-green-primary outline-none"
-            placeholder="Nombre del paciente"
           />
         </div>
         <div className="grid grid-cols-2 gap-3">
