@@ -7,18 +7,20 @@
 --   ERROR 42P16: cannot change name of view column "nombre_paciente"
 --   to "patient_id"
 --
--- Lo que SÍ quedó aplicado de la mig 12 (statements antes del view):
---   - ALTER TABLE deudas ADD COLUMN patient_id
---   - CREATE INDEX idx_deudas_patient
---
--- Lo que faltó (todo después del CREATE VIEW que falló):
---   - VIEW por_cobrar con patient_id
---   - RPC aplicar_pago_deuda
---   - seed_demo_data v4
---
--- Esta mig 13 hace DROP + CREATE de la vista y re-crea las funciones.
+-- Como el SQL Editor de Supabase corre el script en transacción
+-- atómica, TODO de la mig 12 se rolleó (incluyendo el ALTER TABLE).
+-- Esta mig 13 es autosuficiente: re-aplica el ALTER (idempotente
+-- con IF NOT EXISTS), drop+create de la vista, y las dos funciones.
+-- Se puede correr varias veces sin romper nada.
 -- =============================================================
 
+-- 1) Asegurar que la columna patient_id exista en deudas (idempotente)
+ALTER TABLE deudas
+  ADD COLUMN IF NOT EXISTS patient_id UUID REFERENCES pacientes(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_deudas_patient ON deudas(patient_id)
+  WHERE patient_id IS NOT NULL;
+
+-- 2) Re-crear la vista (DROP + CREATE porque cambió el orden de columnas)
 DROP VIEW IF EXISTS por_cobrar CASCADE;
 
 CREATE VIEW por_cobrar AS
