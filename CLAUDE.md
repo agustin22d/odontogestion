@@ -137,15 +137,33 @@ usa cache-busting con `?v=timestamp`.
 - Filtro por sede.
 
 ### Turnos (`/turnos`)
-- Vista diaria con filtro por sede.
+- Toggle **Agenda** (grilla por hora con columnas por doctor) y **Lista**
+  (tabla con stats + analytics mensual para admins).
+- Vista Agenda: slots de 30min entre 8:00–21:00, hora pintada según
+  horarios del doctor (verde claro = dentro del horario; gris claro =
+  fuera; rayado gris = bloqueado por puntual o recurrente). Click en
+  hueco abre form prefilled; click en turno existente abre edición.
+- Filtro por sede (oculta doctores que no atienden ahí).
 - Estados: agendado, atendido, no_asistio, cancelado, reprogramado.
 - Origen: web, whatsapp, telefono, instagram, presencial, otro.
 - Importación por Excel.
+- Form turno: typeahead de paciente (link a ficha o crea on-the-fly),
+  selector de profesional que autocompleta duración default y filtra
+  sedes asignadas, sugerencias de slots libres en chips clickeables
+  (RPC `agenda_slots_libres`).
 
 ### Finanzas (`/finanzas`)
 - **Resumen tab:** KPIs financieros del mes.
 - **Cobranzas tab:** CRUD + filtros + importación Excel + export CSV.
-- **Por Cobrar tab:** deudas de pacientes.
+  El form usa `PacienteTypeahead`; al seleccionar paciente vinculado se
+  consulta la VIEW `por_cobrar` y se muestran sus deudas pendientes en un
+  cartel ámbar. Click en una deuda autocompleta tratamiento + monto =
+  saldo + `es_cuota`; al guardar la cobranza se llama
+  `aplicar_pago_deuda(deuda_id, monto)` que descuenta del saldo y
+  recalcula estado a parcial / pagado.
+- **Por Cobrar tab:** consulta la VIEW `por_cobrar` (deudas con saldo > 0).
+  KPIs: vence hoy / esta semana / este mes; lista con vencidas en rojo y
+  sin fecha agrupadas aparte.
 - **Gastos tab:** CRUD + 10 categorías + toggle pagado/pendiente +
   **recurrentes** (checkbox + frecuencia mensual/semanal/anual + cantidad
   de repeticiones, genera instancias futuras via RPC) + importación Excel
@@ -175,8 +193,16 @@ usa cache-busting con `?v=timestamp`.
 ### Configuración (`/configuracion`)
 - **Clínica**: nombre, color primario/acento, upload de logo.
 - **Sedes**: CRUD.
-- **Equipo**: lista de miembros, generar link de invitación (`/invite/<token>`
-  → signup + `accept_invitation` RPC), revocar pendientes.
+- **Profesionales**: ABM con color, duración default por turno, matrícula,
+  contacto, multi-sede (checkboxes), activo/inactivo. Por cada profesional,
+  panel expandible con: editor de **horarios de atención** (franjas por
+  día de semana + sede opcional) y **bloqueos del profesional**. Sección
+  separada **Bloqueos generales** (feriados / días cerrados sin
+  profesional asignado). Cada bloqueo tiene toggle Puntual (timestamp
+  range) / Semanal (día + franja horaria + vigencia opcional).
+- **Equipo**: lista de miembros, invitar miembros via endpoint
+  `/api/invitations` que crea la fila + manda email con Resend (o cae al
+  link manual si Resend no está configurado), revocar pendientes.
 - **Roles**: CRUD de roles custom con checkboxes por permiso; los `is_system`
   son read-only.
 
@@ -210,14 +236,24 @@ alquiler, servicios, otros`
 - [src/app/global-error.tsx](src/app/global-error.tsx) — 500 legible.
 - [src/app/(dashboard)/layout.tsx](src/app/(dashboard)/layout.tsx) — layout
   con CSS vars de white-label + logo.
-- [src/app/(dashboard)/dashboard/page.tsx](src/app/(dashboard)/dashboard/page.tsx).
+- [src/app/(dashboard)/dashboard/page.tsx](src/app/(dashboard)/dashboard/page.tsx)
+  + [EvolucionAnual.tsx](src/app/(dashboard)/dashboard/EvolucionAnual.tsx).
 - [src/app/(dashboard)/finanzas/FinanzasClient.tsx](src/app/(dashboard)/finanzas/FinanzasClient.tsx).
-- [src/app/(dashboard)/configuracion/ConfiguracionClient.tsx](src/app/(dashboard)/configuracion/ConfiguracionClient.tsx).
+- [src/app/(dashboard)/configuracion/ConfiguracionClient.tsx](src/app/(dashboard)/configuracion/ConfiguracionClient.tsx)
+  + [ProfesionalesTab.tsx](src/app/(dashboard)/configuracion/ProfesionalesTab.tsx).
+- [src/app/(dashboard)/turnos/page.tsx](src/app/(dashboard)/turnos/page.tsx)
+  + [AgendaGrid.tsx](src/app/(dashboard)/turnos/AgendaGrid.tsx)
+  + [TurnoForm.tsx](src/app/(dashboard)/turnos/TurnoForm.tsx).
 - [src/app/(dashboard)/pacientes/PacientesClient.tsx](src/app/(dashboard)/pacientes/PacientesClient.tsx).
+- [src/app/(dashboard)/laboratorio/LaboratorioClient.tsx](src/app/(dashboard)/laboratorio/LaboratorioClient.tsx).
+- [src/app/api/invitations/route.ts](src/app/api/invitations/route.ts) —
+  crea invitación + envía email con Resend (best-effort).
 - [src/components/Sidebar.tsx](src/components/Sidebar.tsx) — filtra nav
   por permisos.
 - [src/components/AuthProvider.tsx](src/components/AuthProvider.tsx) —
   `useHasPermission`.
+- [src/components/PacienteTypeahead.tsx](src/components/PacienteTypeahead.tsx) —
+  reusable; usado en turnos, cobranzas, laboratorio.
 - [src/components/stock/StockModule.tsx](src/components/stock/StockModule.tsx).
 
 ## Tablas Supabase vigentes
@@ -225,8 +261,25 @@ alquiler, servicios, otros`
 **Core SaaS:** `clinics`, `plans`, `clinic_subscriptions`, `clinic_settings`,
 `roles`, `sedes`, `clinic_users`, `invitations`, `system_admins`.
 
-**Dominio:** `turnos`, `cobranzas`, `gastos`, `deudas`, `stock_productos`,
-`stock_movimientos`, `laboratorio_casos`, `laboratorio_historial`, `pacientes`.
+**Dominio:** `turnos` (con `duracion_min` + `profesional_id` FK),
+`cobranzas` (con `patient_id` FK), `gastos`, `deudas` (con `patient_id` FK),
+`stock_productos`, `stock_movimientos`, `laboratorio_casos`
+(con `patient_id` + `profesional_id` FKs), `laboratorio_historial`,
+`pacientes`.
+
+**Agenda:** `profesionales` (color, duración default, activo),
+`profesional_sedes` (join multi-sede), `horarios_atencion` (franjas regulares
+por día de semana), `agenda_bloqueos` (puntuales con timestamp range),
+`bloqueos_recurrentes` (semanales con día + franja horaria + vigencia opcional).
+
+**Vistas:** `por_cobrar` — derivada de `deudas` con saldo computado, filtra
+estado IN (pendiente, parcial). Hereda RLS de `deudas`.
+
+**RPCs principales:** `create_clinic_with_admin`, `get_invitation_by_token`,
+`accept_invitation`, `find_or_create_paciente`, `agenda_slots_libres`
+(considera horarios + bloqueos puntuales + recurrentes + turnos existentes),
+`aplicar_pago_deuda` (descuenta del saldo y recalcula estado),
+`seed_demo_data` (v4), `seed_demo_today` (agrega 8 turnos + 8 cobranzas hoy).
 
 **Storage:** bucket público `clinic-logos` (path `<clinic_id>/logo.<ext>`).
 
@@ -243,13 +296,47 @@ que todas estén aplicadas en el SQL Editor:
    `get_invitation_by_token` + `accept_invitation`.
 5. `20260422000001_accept_invitation.sql` — (duplicado del anterior,
    dejar aplicado el primero).
-6. `20260422000002_seed_demo_data.sql` — función `seed_demo_data(clinic_id)`.
+6. `20260422000002_seed_demo_data.sql` — versión inicial de
+   `seed_demo_data(clinic_id)` (luego reescrita en mig 9 / 10 / 11 / 13).
 7. `20260422000003_gastos_recurrentes.sql` — columnas + RPC
    `generate_recurring_expense_instances`.
 8. `20260422000004_pacientes.sql` — tabla `pacientes` + permisos.
 9. `20260422000005_storage_logos.sql` — bucket `clinic-logos` + policies.
 10. `20260422000006_patient_id_fk.sql` — FK opcional + helper
     `find_or_create_paciente`.
+11. `20260422000007_agenda_profesionales.sql` — tablas `profesionales`,
+    `profesional_sedes`, `horarios_atencion`, `agenda_bloqueos`. Agrega
+    `turnos.duracion_min` + `turnos.profesional_id`. RPC
+    `agenda_slots_libres`. Permisos `profesionales.view/manage`,
+    `agenda.bloquear`.
+12. `20260422000008_bloqueos_recurrentes.sql` — tabla `bloqueos_recurrentes`
+    (semanales). Re-crea `agenda_slots_libres` para considerar ambos tipos.
+13. `20260422000009_seed_demo_expanded.sql` — versión 2 del seed (3 sedes,
+    50 pacientes, 6 doctores, ~250 turnos, etc.). **Nota:** el INSERT a
+    `laboratorio_casos` esperaba `profesional_id` que aún no existía; se
+    arregla en la 10.
+14. `20260422000010_lab_profesional_fk.sql` — agrega
+    `laboratorio_casos.profesional_id` y re-crea el seed.
+15. `20260422000011_por_cobrar_view_and_seed_v3.sql` — crea VIEW `por_cobrar`
+    y seed v3 (cobranzas densas todos los días + 8 garantizadas HOY +
+    gastos recurrentes futuros 6 meses + 30 deudas con vencimientos
+    repartidos). BONUS: función `seed_demo_today(clinic_id)` para sembrar
+    datos del día sin borrar el resto.
+16. `20260422000012_deudas_patient_fk_and_seed_v4.sql` — **NO APLICADA** (se
+    rolleó por completo: `CREATE OR REPLACE VIEW` no permite cambiar el orden
+    de columnas existentes y todo el script estaba en transacción atómica).
+    El contenido (ALTER deudas + RPC `aplicar_pago_deuda` + seed v4) se
+    re-aplicó en la mig 13.
+17. `20260422000013_fix_view_recreate.sql` — autosuficiente / idempotente:
+    `ALTER TABLE deudas ADD COLUMN IF NOT EXISTS patient_id` + `DROP VIEW
+    IF EXISTS por_cobrar` + recreación con `patient_id` en posición 4 + RPC
+    `aplicar_pago_deuda` + seed v4 (pobla `patient_id` en las 30 deudas).
+
+**Re-poblar datos demo en cualquier momento:**
+```sql
+SELECT seed_demo_data('TU_CLINIC_ID');           -- borra y recrea TODO
+SELECT seed_demo_today('TU_CLINIC_ID');          -- solo agrega 8 turnos + 8 cobranzas HOY
+```
 
 ## Env vars
 
@@ -260,6 +347,13 @@ que todas estén aplicadas en el SQL Editor:
 - **Opcionales (para mostrar credenciales demo en /login):**
   - `NEXT_PUBLIC_DEMO_EMAIL`
   - `NEXT_PUBLIC_DEMO_PASSWORD`
+- **Opcionales (email automático de invitaciones via Resend):**
+  - `RESEND_API_KEY` — sin esto, `/api/invitations` igual crea la fila pero
+    no envía email; el banner muestra "Email NO enviado" y el admin copia
+    el link manualmente.
+  - `RESEND_FROM_EMAIL` — default `Odonto Gestión <onboarding@resend.dev>`
+    (testing — solo manda al email registrado en Resend). Para producción
+    real usar dominio validado: `Odonto Gestión <invitaciones@dominio.com>`.
 
 ## Roadmap — completado
 
@@ -276,47 +370,79 @@ que todas estén aplicadas en el SQL Editor:
 - [x] **Fase 4** — Ficha de paciente: entidad `pacientes` con CRUD +
   vista detalle con historial unificado (patient_id FK + fallback a
   match por nombre).
+- [x] **Fase 5** — Agenda completa: tabla `profesionales` con horarios
+  por día de semana + multi-sede + duración default + colores; bloqueos
+  puntuales (timestamp range) y semanales (vigencia opcional); vista
+  agenda diaria con grilla por hora con columnas por doctor; form
+  create/edit turno con typeahead paciente + sugerencia de slots libres.
+  ABM en Configuración → Profesionales.
+- [x] **Fase 6** — Linkeo formal de pacientes: `PacienteTypeahead`
+  reusable integrado en cobranzas / turnos / laboratorio. Crea ficha
+  on-the-fly via `find_or_create_paciente` si el nombre no existe.
+  En cobranzas, al elegir paciente vinculado se muestran sus deudas
+  pendientes y se puede aplicar el pago al saldo (RPC
+  `aplicar_pago_deuda`).
+- [x] **Fase 7** — Email automático de invitación: endpoint
+  `/api/invitations` con Resend; fallback a copia manual si la API key
+  no está configurada.
+- [x] **Fase 8** — Demo viva: seed v4 expandido con cobranzas todos los
+  días + 8 garantizadas HOY, gastos recurrentes futuros 6 meses,
+  30 deudas con vencimientos repartidos. Función `seed_demo_today` para
+  refrescar datos del día sin borrar el resto. Vista `por_cobrar`
+  cableada (antes mostraba "Sin datos" porque no existía).
+- [x] **Fase 9** — Dashboard: evolución anual con gráfico 12 meses
+  (línea sólida año actual + dashed año anterior) + toggle Cobranzas /
+  Gastos / Resultado + delta % vs año anterior.
 - [x] Login con banner de credenciales demo.
 - [x] Root page con redirect auth-aware.
 - [x] global-error.tsx para 500 legibles.
 - [x] Migración middleware → proxy (Next 16).
+- [x] Cleanup Dentalink: removido del UI (cobranzas, Por Cobrar,
+  /manual, /cobranzas standalone — ambas rutas eran legacy/orfanadas).
 
 ## Pendientes (priorizados)
 
-### Alta prioridad
-- [ ] **UI de linkeo paciente en forms de cobranzas/turnos.** La FK
-  `patient_id` está en la DB y el helper `find_or_create_paciente()` en SQL,
-  pero los forms siguen pidiendo el nombre como free text. Próximo paso:
-  typeahead contra `pacientes` con fallback a free-text + llamar
-  `find_or_create_paciente(nombre, apellido)` al guardar y setear
-  `patient_id` en el insert.
-- [ ] **Email automático de invitación.** Hoy el admin copia el link a mano.
-  Dos caminos:
-  - Supabase `inviteUserByEmail` (service role, cero deps, pero el flujo de
-    onboarding cambia: genera magic link de Supabase Auth).
-  - Resend (volver a agregar dep + templates + `RESEND_API_KEY`).
-  Recomendación: Supabase.
+### Alta prioridad — pre-venta ("para salir a vender")
+- [ ] **Fix y test mobile.** Audit profundo en dispositivo real (375px
+  baseline). Puntos probables: AgendaGrid (scroll horizontal con muchas
+  columnas), TurnoForm modal, EvolucionAnual chart legend, ProfesionalesTab
+  expanded panels. Probable que algunas tablas necesiten cards alternativas
+  en mobile.
+- [ ] **Ultrareview en todos los aspectos.** Correr `/ultrareview` (multi-
+  agent cloud review) sobre la rama main. Apunta a security + correctness
+  + UX + performance. Es triggered por el user (billed); claude no lo
+  puede correr solo.
+- [ ] **Test QA con varias clínicas y datos/empleados.** Crear 2-3 cuentas
+  demo desde signup → invitar miembros con distintos roles → verificar
+  RLS aislamiento entre clínicas (datos no se cruzan), permisos correctos,
+  flujo signup→invitación→login completo.
+- [ ] **Dominio personalizado.** Configurar `app.odontogestion.com` en
+  Vercel + DNS. Lo hace el user.
 
 ### Media prioridad
-- [ ] **Evolución anual** con gráfico 12 meses + selector de año + comparación
-  año-contra-año. El Dashboard ya soporta "Año" en el rango pero no hay vista
-  comparativa año actual vs anterior.
-- [ ] **Multi-sede real en cobranzas/gastos.** Hoy si el form tiene checkbox
-  multi-sede solo se guarda la primera. Dos caminos: (a) simplificar UI a
-  single-select (rápido), (b) tabla join `cobranzas_sedes` (correcto).
-- [ ] **Dominio `app.odontogestion.com`** en Vercel (lo configura el user).
+- [ ] **Versiones y permisos por versión** (planes Free / Basic / Pro).
+  Hoy `plans` existe en la DB pero no hay enforcement. Definir qué features
+  va cada plan (ej: Free = 1 sede + 3 users; Basic = 5 sedes + email
+  automático; Pro = ilimitado + analytics avanzado). Implementar gating
+  en UI (badge "Plan Pro" en features bloqueados) y en RLS si aplica.
+- [ ] **Suscripción Vercel y Supabase PRO.** Evaluar si son necesarios.
+  Vercel free tier alcanza para baja escala; Pro ($20/mes) saca branding
+  y agrega analytics. Supabase free tier limita a 500MB DB + 50k MAU;
+  Pro ($25/mes) saca esos límites + backup diario. Recomendación: arrancar
+  free; pasar a Pro cuando haya >5 clínicas activas o >100MB de datos.
+- [ ] **Manuales / FAQ con bot.** El widget FAQ con Claude API estaba
+  scopeado pero desactivado. Reactivar con knowledge base mínima
+  (cómo crear sede, invitar miembro, cargar turno, etc.). Env
+  `ANTHROPIC_API_KEY`, endpoint `/api/chat`.
 
-### Baja prioridad
-- [ ] **Responsive mobile más profundo.** Lo hecho son quick wins; un audit
-  en dispositivo real puede descubrir cosas puntuales en Finanzas, Stock,
-  Laboratorio.
-- [ ] **Widget FAQ con Claude API** (scope definido pero desactivado por
-  pedido del user; env `ANTHROPIC_API_KEY`, endpoint `/api/chat`).
+### Baja prioridad / nice-to-have
 - [ ] **Backfill patient_id** en registros históricos corriendo
   `find_or_create_paciente(paciente, NULL)` por cada fila existente de
-  cobranzas/turnos/laboratorio. Después hacer el FK NOT NULL.
+  cobranzas/turnos/laboratorio/deudas. Después hacer los FK NOT NULL.
 - [ ] **Auditoría completa del import-excel/** — existía en el repo legacy,
   quedó semi-compatible con el schema nuevo pero no probado a fondo.
+- [ ] **Multi-sede real en cobranzas/gastos** (opcional — el user dijo que
+  el comportamiento actual single-select está OK).
 
 ## Convenciones para cambios
 
@@ -331,8 +457,32 @@ que todas estén aplicadas en el SQL Editor:
 
 ## Handoff / contexto de sesión
 
-Última sesión activa: 2026-04-22. El deploy Vercel está activo en
-`odontogestion.vercel.app` y funcional (login, signup, dashboard, todos los
-módulos). Existe al menos una cuenta demo creada por el user.
+Última sesión activa: 2026-04-23. El deploy Vercel está activo en
+`odontogestion.vercel.app` y funcional. La sesión cerró las Fases 5–9
+del roadmap (agenda completa con profesionales y bloqueos recurrentes,
+linkeo formal de pacientes en cobranzas/lab con typeahead, email
+automático de invitaciones via Resend, demo viva con datos densos en
+todos los módulos, evolución anual con comparación año-vs-año en
+Dashboard, cleanup de Dentalink). Working tree limpio, último commit
+`a87ea19`.
+
+**Estado de migraciones en Supabase DEV:** todas las migraciones 1–11
+deberían estar aplicadas. La 12 falló (transacción atómica del SQL
+Editor: `CREATE OR REPLACE VIEW` no permite cambiar orden de columnas);
+su contenido se re-aplica completo en la 13 (idempotente). Si en una
+sesión nueva hay errores tipo "column does not exist" o "relation does
+not exist" en deudas/profesionales/bloqueos, el primer paso es chequear
+que las migs 7, 8, 10, 11 y 13 estén aplicadas.
+
+**Demo viva:** las 4 sedes / 6 doctores / 50 pacientes / ~360 cobranzas
+/ ~140 gastos / 30 deudas / 20 lab cases vienen del seed v4. Para
+refrescar: `SELECT seed_demo_data('clinic_id')` borra todo y recrea;
+`SELECT seed_demo_today('clinic_id')` solo agrega 8 turnos + 8
+cobranzas con fecha de hoy (no destructivo). Útil correr `seed_demo_today`
+antes de cada demo en vivo.
+
+**Pendientes para próxima sesión** (todos en la sección anterior):
+mobile audit, /ultrareview, QA multi-clínica, dominio personalizado,
+gating por plan, evaluación Vercel/Supabase Pro, FAQ bot.
 
 Branches remotas: solo `main`. Todo push va directo a main con fast-forward.
