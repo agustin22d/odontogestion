@@ -64,6 +64,14 @@ export const PERMISSION_GROUPS = {
       { key: 'pacientes.manage', label: 'Gestionar fichas' },
     ],
   },
+  profesionales: {
+    label: 'Profesionales',
+    perms: [
+      { key: 'profesionales.view', label: 'Ver' },
+      { key: 'profesionales.manage', label: 'Gestionar profesionales y horarios' },
+      { key: 'agenda.bloquear', label: 'Bloquear agenda (vacaciones / días libres)' },
+    ],
+  },
   settings: {
     label: 'Configuración',
     perms: [

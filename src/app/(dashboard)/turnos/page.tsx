@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { useAuth } from '@/components/AuthProvider'
+import { useAuth, useHasPermission } from '@/components/AuthProvider'
 import {
   CalendarDays,
   Users,
@@ -17,13 +17,21 @@ import {
   ArrowDownRight,
   BarChart3,
   RefreshCw,
+  Plus,
+  LayoutGrid,
+  List,
 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
-import type { Turno, Sede } from '@/types/database'
+import type {
+  Turno, Sede, Profesional, ProfesionalSede, AgendaBloqueo, HorarioAtencion,
+} from '@/types/database'
 import { getArgentinaToday } from '@/lib/utils/dates'
 import ImportExcelButton from '@/components/ImportExcelButton'
+import TurnoForm from './TurnoForm'
+import AgendaGrid from './AgendaGrid'
 
-type TurnoConSede = Turno & { sedes: Sede }
+type TurnoConSede = Turno & { sedes?: Sede }
+type ViewMode = 'agenda' | 'lista'
 
 const ESTADO_STYLES: Record<string, { bg: string; text: string; label: string }> = {
   agendado: { bg: 'bg-blue-light', text: 'text-blue', label: 'Agendado' },
@@ -35,26 +43,356 @@ const ESTADO_STYLES: Record<string, { bg: string; text: string; label: string }>
 
 export default function TurnosPage() {
   const { user } = useAuth()
+  const canCreate = useHasPermission('turnos.create')
+  const canEdit = useHasPermission('turnos.edit')
   const [syncKey, setSyncKey] = useState(0)
   const isAdmin = user?.rol === 'admin'
+
+  const [view, setView] = useState<ViewMode>('agenda')
+  const [fecha, setFecha] = useState(() => getArgentinaToday())
+  const [sedeFilter, setSedeFilter] = useState<string>('todas')
+
+  // Datos compartidos entre vistas
+  const supabase = createClient()
+  const [sedes, setSedes] = useState<Sede[]>([])
+  const [profesionales, setProfesionales] = useState<Profesional[]>([])
+  const [profSedes, setProfSedes] = useState<Record<string, string[]>>({})
+  const [turnos, setTurnos] = useState<TurnoConSede[]>([])
+  const [bloqueos, setBloqueos] = useState<AgendaBloqueo[]>([])
+  const [horarios, setHorarios] = useState<HorarioAtencion[]>([])
+  const [loading, setLoading] = useState(true)
+
+  // Modal turno
+  const [formOpen, setFormOpen] = useState(false)
+  const [editingTurno, setEditingTurno] = useState<Turno | null>(null)
+  const [prefill, setPrefill] = useState<{ fecha?: string; hora?: string; sede_id?: string | null; profesional_id?: string | null } | null>(null)
+
+  const fetchSetup = useCallback(async () => {
+    const [sedesRes, profsRes, joinRes, horariosRes] = await Promise.all([
+      supabase.from('sedes').select('*').eq('activa', true).order('nombre'),
+      supabase.from('profesionales').select('*').eq('activo', true).order('nombre'),
+      supabase.from('profesional_sedes').select('*'),
+      supabase.from('horarios_atencion').select('*'),
+    ])
+    setSedes((sedesRes.data as unknown as Sede[]) || [])
+    setProfesionales((profsRes.data as unknown as Profesional[]) || [])
+    const joins = (joinRes.data as unknown as ProfesionalSede[]) || []
+    const m: Record<string, string[]> = {}
+    for (const j of joins) {
+      if (!m[j.profesional_id]) m[j.profesional_id] = []
+      m[j.profesional_id].push(j.sede_id)
+    }
+    setProfSedes(m)
+    setHorarios((horariosRes.data as unknown as HorarioAtencion[]) || [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const fetchTurnos = useCallback(async () => {
+    setLoading(true)
+    let query = supabase
+      .from('turnos')
+      .select('*, sedes(*)')
+      .eq('fecha', fecha)
+      .order('hora', { ascending: true })
+    if (sedeFilter !== 'todas') query = query.eq('sede_id', sedeFilter)
+
+    // Bloqueos del día (solapan con [00:00, 23:59:59] en AR)
+    const inicioDia = `${fecha}T00:00:00-03:00`
+    const finDia = `${fecha}T23:59:59-03:00`
+
+    const [turnosRes, bloqueosRes] = await Promise.all([
+      query,
+      supabase
+        .from('agenda_bloqueos')
+        .select('*')
+        .lt('fecha_desde', finDia)
+        .gt('fecha_hasta', inicioDia),
+    ])
+
+    setTurnos((turnosRes.data as unknown as TurnoConSede[]) || [])
+    setBloqueos((bloqueosRes.data as unknown as AgendaBloqueo[]) || [])
+    setLoading(false)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fecha, sedeFilter, syncKey])
+
+  useEffect(() => { fetchSetup() }, [fetchSetup])
+  useEffect(() => { fetchTurnos() }, [fetchTurnos])
+
+  const profesionalesVisibles = useMemo(() => {
+    if (sedeFilter === 'todas') return profesionales
+    // mostrar solo los que atienden en esa sede
+    return profesionales.filter(p => (profSedes[p.id] || []).includes(sedeFilter))
+  }, [profesionales, profSedes, sedeFilter])
+
+  const openNew = (preset?: typeof prefill) => {
+    setEditingTurno(null)
+    setPrefill(preset || { fecha, sede_id: sedeFilter !== 'todas' ? sedeFilter : null })
+    setFormOpen(true)
+  }
+
+  const openEdit = (t: Turno) => {
+    if (!canEdit) return
+    setEditingTurno(t)
+    setPrefill(null)
+    setFormOpen(true)
+  }
+
+  const handleClickSlot = (profId: string, hhmm: string) => {
+    if (!canCreate) return
+    openNew({
+      fecha,
+      hora: hhmm,
+      profesional_id: profId,
+      sede_id: sedeFilter !== 'todas' ? sedeFilter : (profSedes[profId]?.[0] || null),
+    })
+  }
+
+  const changeDate = (offset: number) => {
+    const d = new Date(fecha + 'T12:00:00')
+    d.setDate(d.getDate() + offset)
+    setFecha(d.toISOString().split('T')[0])
+  }
+  const goToday = () => setFecha(getArgentinaToday())
+  const isToday = fecha === getArgentinaToday()
+  const formatFecha = (f: string) => {
+    const d = new Date(f + 'T12:00:00')
+    return d.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })
+  }
 
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between gap-3 mb-6">
+      <div className="flex items-center justify-between gap-3 mb-6 flex-wrap">
         <div>
           <h1 className="font-display text-2xl font-semibold text-text-primary mb-1">Turnos</h1>
-          <p className="text-sm text-text-secondary hidden sm:block">Agenda diaria de turnos</p>
+          <p className="text-sm text-text-secondary hidden sm:block">Agenda diaria</p>
         </div>
-        {isAdmin && (
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {canCreate && (
+            <button
+              onClick={() => openNew()}
+              className="inline-flex items-center gap-2 px-3 py-2 bg-green-primary hover:bg-green-dark text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              <Plus size={16} />
+              Nuevo turno
+            </button>
+          )}
+          {isAdmin && (
             <ImportExcelButton entity="turnos" onSuccess={() => setSyncKey(k => k + 1)} />
+          )}
+        </div>
+      </div>
+
+      {/* Date nav + filters + view toggle */}
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <div className="flex items-center gap-1 bg-surface border border-border rounded-lg px-2 py-1.5">
+          <button onClick={() => changeDate(-1)} className="p-1 hover:bg-beige rounded transition-colors">
+            <ChevronLeft size={16} className="text-text-secondary" />
+          </button>
+          <input
+            type="date"
+            value={fecha}
+            onChange={(e) => setFecha(e.target.value)}
+            className="border-none bg-transparent text-sm font-medium text-text-primary focus:outline-none w-[130px]"
+          />
+          <button onClick={() => changeDate(1)} className="p-1 hover:bg-beige rounded transition-colors">
+            <ChevronRight size={16} className="text-text-secondary" />
+          </button>
+          {!isToday && (
+            <button onClick={goToday} className="text-xs text-green-primary hover:text-green-dark font-medium ml-1">
+              Hoy
+            </button>
+          )}
+        </div>
+
+        <select
+          value={sedeFilter}
+          onChange={(e) => setSedeFilter(e.target.value)}
+          className="text-sm border border-border rounded-lg px-2 py-1.5 bg-surface text-text-primary focus:outline-none focus:border-green-primary"
+        >
+          <option value="todas">Todas las sedes</option>
+          {sedes.map(s => (
+            <option key={s.id} value={s.id}>{s.nombre}</option>
+          ))}
+        </select>
+
+        <div className="flex items-center gap-1 bg-surface border border-border rounded-lg p-0.5 ml-auto">
+          <button
+            onClick={() => setView('agenda')}
+            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium transition-colors ${view === 'agenda' ? 'bg-green-primary text-white' : 'text-text-secondary hover:text-text-primary'}`}
+          >
+            <LayoutGrid size={12} /> Agenda
+          </button>
+          <button
+            onClick={() => setView('lista')}
+            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium transition-colors ${view === 'lista' ? 'bg-green-primary text-white' : 'text-text-secondary hover:text-text-primary'}`}
+          >
+            <List size={12} /> Lista
+          </button>
+        </div>
+      </div>
+
+      <p className="text-sm text-text-secondary capitalize mb-4">{formatFecha(fecha)}</p>
+
+      {view === 'agenda' ? (
+        <>
+          {loading ? (
+            <div className="bg-surface border border-border rounded-xl p-8 text-center text-sm text-text-muted">
+              Cargando agenda...
+            </div>
+          ) : (
+            <AgendaGrid
+              fecha={fecha}
+              profesionales={profesionalesVisibles}
+              turnos={turnos}
+              bloqueos={bloqueos}
+              horarios={horarios}
+              sedeId={sedeFilter !== 'todas' ? sedeFilter : null}
+              onClickSlot={handleClickSlot}
+              onClickTurno={openEdit}
+            />
+          )}
+          <p className="text-xs text-text-muted mt-3">
+            {turnos.length} turno{turnos.length !== 1 ? 's' : ''} ·{' '}
+            {profesionalesVisibles.length} profesional{profesionalesVisibles.length !== 1 ? 'es' : ''}
+          </p>
+        </>
+      ) : (
+        <ListaView
+          turnos={turnos}
+          loading={loading}
+          showAnalytics={isAdmin}
+          syncKey={syncKey}
+          sedeFilter={sedeFilter}
+          onClickTurno={openEdit}
+        />
+      )}
+
+      <TurnoForm
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        onSaved={() => setSyncKey(k => k + 1)}
+        turno={editingTurno}
+        prefill={prefill || undefined}
+        sedes={sedes}
+        profesionales={profesionales}
+        profSedes={profSedes}
+      />
+    </div>
+  )
+}
+
+// ============================================
+// Vista Lista (la "tabla" anterior + analytics + stats)
+// ============================================
+function ListaView({
+  turnos, loading, showAnalytics, syncKey, sedeFilter, onClickTurno,
+}: {
+  turnos: TurnoConSede[]
+  loading: boolean
+  showAnalytics: boolean
+  syncKey: number
+  sedeFilter: string
+  onClickTurno: (t: Turno) => void
+}) {
+  const [busqueda, setBusqueda] = useState('')
+
+  const turnosFiltrados = busqueda.trim()
+    ? turnos.filter(t =>
+        t.paciente?.toLowerCase().includes(busqueda.toLowerCase()) ||
+        t.profesional?.toLowerCase().includes(busqueda.toLowerCase())
+      )
+    : turnos
+
+  const total = turnos.length
+  const atendidos = turnos.filter(t => t.estado === 'atendido').length
+  const noShows = turnos.filter(t => t.estado === 'no_asistio').length
+  const cancelados = turnos.filter(t => t.estado === 'cancelado').length
+  const reprogramados = turnos.filter(t => t.estado === 'reprogramado').length
+  const agendados = turnos.filter(t => t.estado === 'agendado').length
+  const efectivos = atendidos + noShows
+  const tasaShow = efectivos > 0 ? Math.round((atendidos / efectivos) * 100) : 0
+
+  return (
+    <>
+      {showAnalytics && <TurnosAnalytics syncKey={syncKey} sedeFilter={sedeFilter} />}
+
+      <div className="relative mb-4">
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+        <input
+          type="text"
+          placeholder="Buscar paciente o profesional..."
+          value={busqueda}
+          onChange={(e) => setBusqueda(e.target.value)}
+          className="w-full sm:w-80 pl-9 pr-3 py-2 text-sm border border-border rounded-lg bg-surface text-text-primary placeholder:text-text-muted focus:outline-none focus:border-green-primary"
+        />
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
+        <StatCard icon={<CalendarDays size={18} />} label="Total" value={total} color="text-text-primary" />
+        <StatCard icon={<Clock size={18} />} label="Agendados" value={agendados} color="text-blue" />
+        <StatCard icon={<CheckCircle2 size={18} />} label="Atendidos" value={atendidos} color="text-green-primary" />
+        <StatCard icon={<XCircle size={18} />} label="No asistió" value={noShows} color="text-red" />
+        <StatCard icon={<Ban size={18} />} label="Cancelados" value={cancelados} color="text-amber" />
+        <StatCard icon={<RefreshCw size={18} />} label="Reprogram." value={reprogramados} color="text-purple-600" />
+        <StatCard icon={<Users size={18} />} label="Tasa show" value={`${tasaShow}%`} color="text-green-primary" />
+      </div>
+
+      <div className="bg-surface rounded-xl border border-border overflow-hidden">
+        {loading ? (
+          <div className="p-8 text-center text-text-muted text-sm">Cargando turnos...</div>
+        ) : turnosFiltrados.length === 0 ? (
+          <div className="p-8 text-center text-text-muted text-sm">
+            {busqueda ? `No se encontraron turnos para "${busqueda}"` : `No hay turnos para esta fecha${sedeFilter !== 'todas' ? ' en esta sede' : ''}`}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-beige/50">
+                  <th className="text-left px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide">Hora</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide">Paciente</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide hidden md:table-cell">Profesional</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide hidden sm:table-cell">Sede</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide">Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {turnosFiltrados.map((turno) => {
+                  const estilo = ESTADO_STYLES[turno.estado] || ESTADO_STYLES.agendado
+                  return (
+                    <tr
+                      key={turno.id}
+                      onClick={() => onClickTurno(turno)}
+                      className="border-b border-border-light hover:bg-beige/30 transition-colors cursor-pointer"
+                    >
+                      <td className="px-4 py-3 font-medium text-text-primary whitespace-nowrap">
+                        {turno.hora?.slice(0, 5)}
+                        <span className="text-text-muted text-[10px] ml-1">·{turno.duracion_min || 30}m</span>
+                      </td>
+                      <td className="px-4 py-3 text-text-primary">{turno.paciente}</td>
+                      <td className="px-4 py-3 text-text-secondary hidden md:table-cell">{turno.profesional || '—'}</td>
+                      <td className="px-4 py-3 text-text-secondary hidden sm:table-cell">{turno.sedes?.nombre || '—'}</td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${estilo.bg} ${estilo.text}`}>
+                          {estilo.label}
+                        </span>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
 
-      <AgendaTab syncKey={syncKey} showAnalytics={isAdmin} />
-    </div>
+      {!loading && turnos.length > 0 && (
+        <p className="text-xs text-text-muted mt-3">
+          {busqueda ? `${turnosFiltrados.length} de ` : ''}{turnos.length} turno{turnos.length !== 1 ? 's' : ''}
+        </p>
+      )}
+    </>
   )
 }
 
@@ -75,19 +413,16 @@ function TurnosAnalytics({ syncKey, sedeFilter }: { syncKey: number; sedeFilter:
       const hoy = getArgentinaToday()
       const [year, month] = hoy.split('-').map(Number)
 
-      // Current month range
       const mesStart = `${year}-${String(month).padStart(2, '0')}-01`
       const lastDay = new Date(year, month, 0).getDate()
       const mesEnd = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
 
-      // Previous month range
       const prevMonth = month === 1 ? 12 : month - 1
       const prevYear = month === 1 ? year - 1 : year
       const prevStart = `${prevYear}-${String(prevMonth).padStart(2, '0')}-01`
       const prevLastDay = new Date(prevYear, prevMonth, 0).getDate()
       const prevEnd = `${prevYear}-${String(prevMonth).padStart(2, '0')}-${String(prevLastDay).padStart(2, '0')}`
 
-      // Last 7 days
       const dias7: string[] = []
       for (let i = 6; i >= 0; i--) {
         const d = new Date(hoy + 'T12:00:00')
@@ -107,10 +442,6 @@ function TurnosAnalytics({ syncKey, sedeFilter }: { syncKey: number; sedeFilter:
       }
 
       const [resMes, resPrev, resSemana] = await Promise.all([qMes, qPrev, qSemana])
-
-      if (resMes.error) console.error('Error fetching turnos mes:', resMes.error)
-      if (resPrev.error) console.error('Error fetching turnos prev:', resPrev.error)
-      if (resSemana.error) console.error('Error fetching turnos semana:', resSemana.error)
 
       const turnosMes = (resMes.data || []) as unknown as { estado: string }[]
       const turnosPrev = (resPrev.data || []) as unknown as { estado: string }[]
@@ -160,15 +491,12 @@ function TurnosAnalytics({ syncKey, sedeFilter }: { syncKey: number; sedeFilter:
   if (!stats) return null
 
   const tasaDiff = stats.mesActual.tasaShow - stats.mesAnterior.tasaShow
-
   const mesLabel = new Date(getArgentinaToday() + 'T12:00:00').toLocaleDateString('es-AR', { month: 'long' })
 
   return (
     <div className="mb-6">
       <p className="text-xs text-text-muted mb-2 uppercase tracking-wide">Resumen mensual — {mesLabel}</p>
-      {/* KPIs row */}
       <div className="grid grid-cols-3 gap-3 mb-4">
-        {/* Promedio diario */}
         <div className="bg-surface rounded-xl border border-border p-4">
           <div className="flex items-center gap-2 mb-1">
             <BarChart3 size={16} className="text-text-muted" />
@@ -178,7 +506,6 @@ function TurnosAnalytics({ syncKey, sedeFilter }: { syncKey: number; sedeFilter:
           <p className="text-xs text-text-muted mt-0.5">turnos por día este mes</p>
         </div>
 
-        {/* Tasa show */}
         <div className="bg-surface rounded-xl border border-border p-4">
           <div className="flex items-center gap-2 mb-1">
             <CheckCircle2 size={16} className="text-text-muted" />
@@ -198,7 +525,6 @@ function TurnosAnalytics({ syncKey, sedeFilter }: { syncKey: number; sedeFilter:
           <p className="text-xs text-text-muted mt-0.5">{stats.mesActual.atendidos} atendidos · {stats.mesActual.noShows} no-shows</p>
         </div>
 
-        {/* Cancelados */}
         <div className="bg-surface rounded-xl border border-border p-4">
           <div className="flex items-center gap-2 mb-1">
             <Ban size={16} className="text-text-muted" />
@@ -211,7 +537,6 @@ function TurnosAnalytics({ syncKey, sedeFilter }: { syncKey: number; sedeFilter:
         </div>
       </div>
 
-      {/* Weekly chart */}
       <div className="bg-surface rounded-xl border border-border p-4">
         <h3 className="text-sm font-medium text-text-secondary mb-3">Últimos 7 días</h3>
         <div className="h-[140px]">
@@ -234,205 +559,6 @@ function TurnosAnalytics({ syncKey, sedeFilter }: { syncKey: number; sedeFilter:
   )
 }
 
-// ============================================
-// Tab: Agenda del día (existente)
-// ============================================
-function AgendaTab({ syncKey, showAnalytics }: { syncKey: number; showAnalytics?: boolean }) {
-  const { user } = useAuth()
-  const supabase = createClient()
-  const [turnos, setTurnos] = useState<TurnoConSede[]>([])
-  const [sedes, setSedes] = useState<Sede[]>([])
-  const [loading, setLoading] = useState(true)
-  const [fecha, setFecha] = useState(() => getArgentinaToday())
-  const [sedeFilter, setSedeFilter] = useState<string>('todas')
-  const [busqueda, setBusqueda] = useState('')
-
-  const fetchSedes = useCallback(async () => {
-    const { data, error } = await supabase.from('sedes').select('*').eq('activa', true).order('nombre')
-    if (error) console.error('Error fetching sedes:', error)
-    if (data) setSedes(data)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const fetchTurnos = useCallback(async () => {
-    setLoading(true)
-    try {
-      let query = supabase
-        .from('turnos')
-        .select('*, sedes(*)')
-        .eq('fecha', fecha)
-        .order('hora', { ascending: true })
-
-      if (sedeFilter !== 'todas') {
-        query = query.eq('sede_id', sedeFilter)
-      }
-
-      const { data, error } = await query
-      if (error) console.error('Error fetching turnos:', error)
-      setTurnos((data as TurnoConSede[]) || [])
-    } catch (err) {
-      console.error('Error fetching turnos:', err)
-    } finally {
-      setLoading(false)
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fecha, sedeFilter, user, syncKey])
-
-  useEffect(() => { fetchSedes() }, [fetchSedes])
-  useEffect(() => { fetchTurnos() }, [fetchTurnos])
-
-
-  const changeDate = (offset: number) => {
-    const d = new Date(fecha + 'T12:00:00')
-    d.setDate(d.getDate() + offset)
-    setFecha(d.toISOString().split('T')[0])
-  }
-
-  const goToday = () => setFecha(getArgentinaToday())
-
-  const turnosFiltrados = busqueda.trim()
-    ? turnos.filter(t =>
-        t.paciente?.toLowerCase().includes(busqueda.toLowerCase()) ||
-        t.profesional?.toLowerCase().includes(busqueda.toLowerCase())
-      )
-    : turnos
-
-  const total = turnos.length
-  const atendidos = turnos.filter(t => t.estado === 'atendido').length
-  const noShows = turnos.filter(t => t.estado === 'no_asistio').length
-  const cancelados = turnos.filter(t => t.estado === 'cancelado').length
-  const reprogramados = turnos.filter(t => t.estado === 'reprogramado').length
-  const agendados = turnos.filter(t => t.estado === 'agendado').length
-  const efectivos = atendidos + noShows
-  const tasaShow = efectivos > 0 ? Math.round((atendidos / efectivos) * 100) : 0
-
-  const formatFecha = (f: string) => {
-    const d = new Date(f + 'T12:00:00')
-    return d.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })
-  }
-
-  const isToday = fecha === getArgentinaToday()
-
-  return (
-    <>
-      {/* Date nav + filters */}
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        <div className="flex items-center gap-1 bg-surface border border-border rounded-lg px-2 py-1.5">
-          <button onClick={() => changeDate(-1)} className="p-1 hover:bg-beige rounded transition-colors">
-            <ChevronLeft size={16} className="text-text-secondary" />
-          </button>
-          <input
-            type="date"
-            value={fecha}
-            onChange={(e) => setFecha(e.target.value)}
-            className="border-none bg-transparent text-sm font-medium text-text-primary focus:outline-none w-[130px]"
-          />
-          <button onClick={() => changeDate(1)} className="p-1 hover:bg-beige rounded transition-colors">
-            <ChevronRight size={16} className="text-text-secondary" />
-          </button>
-          {!isToday && (
-            <button onClick={goToday} className="text-xs text-green-primary hover:text-green-dark font-medium ml-1">
-              Hoy
-            </button>
-          )}
-        </div>
-
-        <select
-          value={sedeFilter}
-          onChange={(e) => setSedeFilter(e.target.value)}
-          className="text-sm border border-border rounded-lg px-2 py-1.5 bg-surface text-text-primary focus:outline-none focus:border-green-primary"
-        >
-          <option value="todas">Todas las sedes</option>
-          {sedes.map(s => (
-            <option key={s.id} value={s.id}>{s.nombre}</option>
-          ))}
-        </select>
-      </div>
-
-      {/* Monthly Analytics — after date/sede selectors */}
-      {showAnalytics && <TurnosAnalytics syncKey={syncKey} sedeFilter={sedeFilter} />}
-
-      <p className="text-sm text-text-secondary capitalize mb-4">{formatFecha(fecha)}</p>
-
-      {/* Search */}
-      <div className="relative mb-4">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
-        <input
-          type="text"
-          placeholder="Buscar paciente o profesional..."
-          value={busqueda}
-          onChange={(e) => setBusqueda(e.target.value)}
-          className="w-full sm:w-80 pl-9 pr-3 py-2 text-sm border border-border rounded-lg bg-surface text-text-primary placeholder:text-text-muted focus:outline-none focus:border-green-primary"
-        />
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
-        <StatCard icon={<CalendarDays size={18} />} label="Total" value={total} color="text-text-primary" />
-        <StatCard icon={<Clock size={18} />} label="Agendados" value={agendados} color="text-blue" />
-        <StatCard icon={<CheckCircle2 size={18} />} label="Atendidos" value={atendidos} color="text-green-primary" />
-        <StatCard icon={<XCircle size={18} />} label="No asistió" value={noShows} color="text-red" />
-        <StatCard icon={<Ban size={18} />} label="Cancelados" value={cancelados} color="text-amber" />
-        <StatCard icon={<RefreshCw size={18} />} label="Reprogram." value={reprogramados} color="text-purple-600" />
-        <StatCard icon={<Users size={18} />} label="Tasa show" value={`${tasaShow}%`} color="text-green-primary" />
-      </div>
-
-      {/* Table */}
-      <div className="bg-surface rounded-xl border border-border overflow-hidden">
-        {loading ? (
-          <div className="p-8 text-center text-text-muted text-sm">Cargando turnos...</div>
-        ) : turnosFiltrados.length === 0 ? (
-          <div className="p-8 text-center text-text-muted text-sm">
-            {busqueda ? `No se encontraron turnos para "${busqueda}"` : `No hay turnos para esta fecha${sedeFilter !== 'todas' ? ' en esta sede' : ''}`}
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-beige/50">
-                  <th className="text-left px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide">Hora</th>
-                  <th className="text-left px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide">Paciente</th>
-                  <th className="text-left px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide hidden md:table-cell">Profesional</th>
-                  <th className="text-left px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide hidden sm:table-cell">Sede</th>
-                  <th className="text-left px-4 py-3 font-medium text-text-secondary text-xs uppercase tracking-wide">Estado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {turnosFiltrados.map((turno) => {
-                  const estilo = ESTADO_STYLES[turno.estado] || ESTADO_STYLES.agendado
-                  return (
-                    <tr key={turno.id} className="border-b border-border-light hover:bg-beige/30 transition-colors">
-                      <td className="px-4 py-3 font-medium text-text-primary whitespace-nowrap">{turno.hora?.slice(0, 5)}</td>
-                      <td className="px-4 py-3 text-text-primary">{turno.paciente}</td>
-                      <td className="px-4 py-3 text-text-secondary hidden md:table-cell">{turno.profesional || '—'}</td>
-                      <td className="px-4 py-3 text-text-secondary hidden sm:table-cell">{turno.sedes?.nombre || '—'}</td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${estilo.bg} ${estilo.text}`}>
-                          {estilo.label}
-                        </span>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {!loading && turnos.length > 0 && (
-        <p className="text-xs text-text-muted mt-3">
-          {busqueda ? `${turnosFiltrados.length} de ` : ''}{turnos.length} turno{turnos.length !== 1 ? 's' : ''}
-        </p>
-      )}
-    </>
-  )
-}
-
-
-// ============================================
-// Shared components
-// ============================================
 function StatCard({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: number | string; color: string }) {
   return (
     <div className="bg-surface rounded-xl border border-border p-4">

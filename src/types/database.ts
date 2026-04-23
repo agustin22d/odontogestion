@@ -212,8 +212,10 @@ export interface Turno {
   clinic_id?: string
   fecha: string
   hora: string
+  duracion_min: number
   sede_id: string | null
   patient_id?: string | null
+  profesional_id?: string | null
   paciente: string
   profesional: string | null
   estado: EstadoTurno
@@ -223,6 +225,61 @@ export interface Turno {
   // joins
   sede?: Sede
   sedes?: Sede
+  profesional_obj?: Profesional
+}
+
+export interface Profesional {
+  id: string
+  clinic_id?: string
+  nombre: string
+  apellido: string | null
+  color: string
+  duracion_default_min: number
+  matricula: string | null
+  email: string | null
+  telefono: string | null
+  notas: string | null
+  activo: boolean
+  created_at: string
+  // joins
+  sedes?: Sede[]
+}
+
+export interface ProfesionalSede {
+  profesional_id: string
+  sede_id: string
+}
+
+/** 0 = domingo, 6 = sábado (compatible con `EXTRACT(DOW)` de Postgres). */
+export type DiaSemana = 0 | 1 | 2 | 3 | 4 | 5 | 6
+
+export interface HorarioAtencion {
+  id: string
+  clinic_id?: string
+  profesional_id: string
+  sede_id: string | null
+  dia_semana: DiaSemana
+  hora_desde: string
+  hora_hasta: string
+  created_at: string
+}
+
+export interface AgendaBloqueo {
+  id: string
+  clinic_id?: string
+  profesional_id: string | null
+  sede_id: string | null
+  fecha_desde: string
+  fecha_hasta: string
+  motivo: string | null
+  created_by: string | null
+  created_at: string
+}
+
+/** Devuelto por la RPC `agenda_slots_libres`. */
+export interface SlotLibre {
+  slot_inicio: string
+  slot_fin: string
 }
 
 export interface ProductoStock {

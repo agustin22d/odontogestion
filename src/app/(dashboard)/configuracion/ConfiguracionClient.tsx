@@ -8,6 +8,7 @@ import {
   MapPin,
   Users,
   Shield,
+  Stethoscope,
   Plus,
   Pencil,
   Trash2,
@@ -24,12 +25,14 @@ import {
 } from 'lucide-react'
 import type { Sede, ClinicSettings, Invitation } from '@/types/database'
 import { PERMISSION_GROUPS } from '@/lib/permissions'
+import ProfesionalesTab from './ProfesionalesTab'
 
-type Tab = 'clinica' | 'sedes' | 'equipo' | 'roles'
+type Tab = 'clinica' | 'sedes' | 'profesionales' | 'equipo' | 'roles'
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode; perm: string }[] = [
   { id: 'clinica', label: 'Clínica', icon: <Building2 size={16} />, perm: 'settings.clinic' },
   { id: 'sedes', label: 'Sedes', icon: <MapPin size={16} />, perm: 'settings.sedes' },
+  { id: 'profesionales', label: 'Profesionales', icon: <Stethoscope size={16} />, perm: 'profesionales.view' },
   { id: 'equipo', label: 'Equipo', icon: <Users size={16} />, perm: 'settings.users' },
   { id: 'roles', label: 'Roles', icon: <Shield size={16} />, perm: 'settings.roles' },
 ]
@@ -79,6 +82,11 @@ export default function ConfiguracionClient() {
       {hasPermission('settings.sedes') && (
         <div style={{ display: activeTab === 'sedes' ? 'block' : 'none' }}>
           <SedesTab />
+        </div>
+      )}
+      {hasPermission('profesionales.view') && (
+        <div style={{ display: activeTab === 'profesionales' ? 'block' : 'none' }}>
+          <ProfesionalesTab />
         </div>
       )}
       {hasPermission('settings.users') && (
