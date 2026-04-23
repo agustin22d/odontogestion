@@ -335,6 +335,7 @@ export interface LaboratorioCaso {
   patient_id?: string | null
   paciente: string
   sede_id: string | null
+  profesional_id?: string | null
   profesional: string | null
   tipo: string
   laboratorio: string | null
