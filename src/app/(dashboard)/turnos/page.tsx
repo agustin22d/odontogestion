@@ -23,7 +23,7 @@ import {
 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import type {
-  Turno, Sede, Profesional, ProfesionalSede, AgendaBloqueo, HorarioAtencion,
+  Turno, Sede, Profesional, ProfesionalSede, AgendaBloqueo, BloqueoRecurrente, HorarioAtencion,
 } from '@/types/database'
 import { getArgentinaToday } from '@/lib/utils/dates'
 import ImportExcelButton from '@/components/ImportExcelButton'
@@ -59,6 +59,7 @@ export default function TurnosPage() {
   const [profSedes, setProfSedes] = useState<Record<string, string[]>>({})
   const [turnos, setTurnos] = useState<TurnoConSede[]>([])
   const [bloqueos, setBloqueos] = useState<AgendaBloqueo[]>([])
+  const [bloqueosRecurrentes, setBloqueosRecurrentes] = useState<BloqueoRecurrente[]>([])
   const [horarios, setHorarios] = useState<HorarioAtencion[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -99,18 +100,24 @@ export default function TurnosPage() {
     // Bloqueos del día (solapan con [00:00, 23:59:59] en AR)
     const inicioDia = `${fecha}T00:00:00-03:00`
     const finDia = `${fecha}T23:59:59-03:00`
+    const dow = new Date(fecha + 'T12:00:00').getDay()
 
-    const [turnosRes, bloqueosRes] = await Promise.all([
+    const [turnosRes, bloqueosRes, recurrRes] = await Promise.all([
       query,
       supabase
         .from('agenda_bloqueos')
         .select('*')
         .lt('fecha_desde', finDia)
         .gt('fecha_hasta', inicioDia),
+      supabase
+        .from('bloqueos_recurrentes')
+        .select('*')
+        .eq('dia_semana', dow),
     ])
 
     setTurnos((turnosRes.data as unknown as TurnoConSede[]) || [])
     setBloqueos((bloqueosRes.data as unknown as AgendaBloqueo[]) || [])
+    setBloqueosRecurrentes((recurrRes.data as unknown as BloqueoRecurrente[]) || [])
     setLoading(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fecha, sedeFilter, syncKey])
@@ -246,6 +253,7 @@ export default function TurnosPage() {
               profesionales={profesionalesVisibles}
               turnos={turnos}
               bloqueos={bloqueos}
+              bloqueosRecurrentes={bloqueosRecurrentes}
               horarios={horarios}
               sedeId={sedeFilter !== 'todas' ? sedeFilter : null}
               onClickSlot={handleClickSlot}

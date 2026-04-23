@@ -276,6 +276,21 @@ export interface AgendaBloqueo {
   created_at: string
 }
 
+export interface BloqueoRecurrente {
+  id: string
+  clinic_id?: string
+  profesional_id: string | null
+  sede_id: string | null
+  dia_semana: DiaSemana
+  hora_desde: string
+  hora_hasta: string
+  motivo: string | null
+  vigente_desde: string | null
+  vigente_hasta: string | null
+  created_by: string | null
+  created_at: string
+}
+
 /** Devuelto por la RPC `agenda_slots_libres`. */
 export interface SlotLibre {
   slot_inicio: string

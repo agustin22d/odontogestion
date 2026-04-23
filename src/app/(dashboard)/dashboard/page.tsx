@@ -19,6 +19,7 @@ import {
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import type { Sede } from '@/types/database'
 import { getArgentinaToday, getArgentinaDate, formatFechaHoyAR } from '@/lib/utils/dates'
+import EvolucionAnual from './EvolucionAnual'
 
 type RangoPreset = 'hoy' | 'semana' | 'mes' | 'anio' | 'custom'
 
@@ -373,6 +374,9 @@ function AdminDashboard() {
               </div>
             </div>
           )}
+
+          {/* Evolución anual: 12 meses + comparación año-vs-año */}
+          <EvolucionAnual sedeFilter={sedeFilter} />
 
           {/* Turnos por sede */}
           {sedeFilter === 'todas' && turnosPorSede.length > 0 && (

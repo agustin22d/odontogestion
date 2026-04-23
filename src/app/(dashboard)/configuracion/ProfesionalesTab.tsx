@@ -19,6 +19,7 @@ import type {
   Sede,
   HorarioAtencion,
   AgendaBloqueo,
+  BloqueoRecurrente,
   DiaSemana,
 } from '@/types/database'
 
@@ -648,6 +649,8 @@ function BloqueosGenerales({ sedes }: { sedes: Sede[] }) {
   )
 }
 
+type BloqueoTipo = 'puntual' | 'semanal'
+
 function BloqueosLista({
   profesionalId, sedes, title,
 }: {
@@ -656,10 +659,12 @@ function BloqueosLista({
   title: string
 }) {
   const supabase = createClient()
-  const [bloqueos, setBloqueos] = useState<AgendaBloqueo[]>([])
+  const [puntuales, setPuntuales] = useState<AgendaBloqueo[]>([])
+  const [recurrentes, setRecurrentes] = useState<BloqueoRecurrente[]>([])
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
-  const [form, setForm] = useState({
+  const [tipo, setTipo] = useState<BloqueoTipo>('puntual')
+  const [formP, setFormP] = useState({
     fecha_desde: '',
     hora_desde: '09:00',
     fecha_hasta: '',
@@ -667,55 +672,94 @@ function BloqueosLista({
     sede_id: '',
     motivo: '',
   })
+  const [formR, setFormR] = useState({
+    dia_semana: 1 as DiaSemana,
+    hora_desde: '14:00',
+    hora_hasta: '16:00',
+    sede_id: '',
+    motivo: '',
+    vigente_desde: '',
+    vigente_hasta: '',
+  })
 
   const fetchBloqueos = useCallback(async () => {
     setLoading(true)
-    const query = supabase
-      .from('agenda_bloqueos')
-      .select('*')
-      .order('fecha_desde', { ascending: false })
-      .limit(20)
-    const { data } = profesionalId
-      ? await query.eq('profesional_id', profesionalId)
-      : await query.is('profesional_id', null)
-    setBloqueos((data as unknown as AgendaBloqueo[]) || [])
+    const qP = supabase.from('agenda_bloqueos').select('*').order('fecha_desde', { ascending: false }).limit(20)
+    const qR = supabase.from('bloqueos_recurrentes').select('*').order('dia_semana').order('hora_desde').limit(20)
+    const [resP, resR] = await Promise.all([
+      profesionalId ? qP.eq('profesional_id', profesionalId) : qP.is('profesional_id', null),
+      profesionalId ? qR.eq('profesional_id', profesionalId) : qR.is('profesional_id', null),
+    ])
+    setPuntuales((resP.data as unknown as AgendaBloqueo[]) || [])
+    setRecurrentes((resR.data as unknown as BloqueoRecurrente[]) || [])
     setLoading(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profesionalId])
 
   useEffect(() => { fetchBloqueos() }, [fetchBloqueos])
 
-  const handleAdd = async (e: React.FormEvent) => {
+  const handleAddPuntual = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!form.fecha_desde || !form.fecha_hasta) {
+    if (!formP.fecha_desde || !formP.fecha_hasta) {
       alert('Indicá fechas')
       return
     }
-    const desde = `${form.fecha_desde}T${form.hora_desde}:00-03:00`
-    const hasta = `${form.fecha_hasta}T${form.hora_hasta}:00-03:00`
+    const desde = `${formP.fecha_desde}T${formP.hora_desde}:00-03:00`
+    const hasta = `${formP.fecha_hasta}T${formP.hora_hasta}:00-03:00`
     if (new Date(hasta) <= new Date(desde)) {
       alert('El fin debe ser posterior al inicio')
       return
     }
     const { error } = await supabase.from('agenda_bloqueos').insert({
       profesional_id: profesionalId,
-      sede_id: form.sede_id || null,
+      sede_id: formP.sede_id || null,
       fecha_desde: desde,
       fecha_hasta: hasta,
-      motivo: form.motivo.trim() || null,
+      motivo: formP.motivo.trim() || null,
     })
     if (error) {
       alert('Error: ' + error.message)
       return
     }
     setAdding(false)
-    setForm({ fecha_desde: '', hora_desde: '09:00', fecha_hasta: '', hora_hasta: '18:00', sede_id: '', motivo: '' })
+    setFormP({ fecha_desde: '', hora_desde: '09:00', fecha_hasta: '', hora_hasta: '18:00', sede_id: '', motivo: '' })
     fetchBloqueos()
   }
 
-  const handleDelete = async (b: AgendaBloqueo) => {
+  const handleAddRecurrente = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (formR.hora_hasta <= formR.hora_desde) {
+      alert('La hora de fin debe ser mayor que la de inicio')
+      return
+    }
+    const { error } = await supabase.from('bloqueos_recurrentes').insert({
+      profesional_id: profesionalId,
+      sede_id: formR.sede_id || null,
+      dia_semana: formR.dia_semana,
+      hora_desde: formR.hora_desde,
+      hora_hasta: formR.hora_hasta,
+      motivo: formR.motivo.trim() || null,
+      vigente_desde: formR.vigente_desde || null,
+      vigente_hasta: formR.vigente_hasta || null,
+    })
+    if (error) {
+      alert('Error: ' + error.message)
+      return
+    }
+    setAdding(false)
+    setFormR({ dia_semana: 1, hora_desde: '14:00', hora_hasta: '16:00', sede_id: '', motivo: '', vigente_desde: '', vigente_hasta: '' })
+    fetchBloqueos()
+  }
+
+  const handleDeletePuntual = async (b: AgendaBloqueo) => {
     if (!confirm('¿Quitar este bloqueo?')) return
     await supabase.from('agenda_bloqueos').delete().eq('id', b.id)
+    fetchBloqueos()
+  }
+
+  const handleDeleteRecurrente = async (b: BloqueoRecurrente) => {
+    if (!confirm('¿Quitar este bloqueo recurrente?')) return
+    await supabase.from('bloqueos_recurrentes').delete().eq('id', b.id)
     fetchBloqueos()
   }
 
@@ -733,6 +777,8 @@ function BloqueosLista({
     }
     return `${d1.toLocaleString('es-AR', opts)} → ${d2.toLocaleString('es-AR', opts)}`
   }
+
+  const diaLabel = (d: DiaSemana) => DIAS_SEMANA.find(x => x.value === d)?.label || ''
 
   return (
     <div>
@@ -762,94 +808,148 @@ function BloqueosLista({
       )}
 
       {adding && (
-        <form onSubmit={handleAdd} className="bg-white border border-border rounded-lg p-3 mb-3 space-y-2">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <div>
-              <label className="block text-[10px] font-medium text-text-secondary mb-1">Desde</label>
-              <div className="flex gap-1">
-                <input
-                  type="date"
-                  value={form.fecha_desde}
-                  onChange={e => setForm({ ...form, fecha_desde: e.target.value })}
-                  required
-                  className="flex-1 border border-border rounded px-2 py-1.5 text-xs bg-white"
-                />
-                <input
-                  type="time"
-                  value={form.hora_desde}
-                  onChange={e => setForm({ ...form, hora_desde: e.target.value })}
-                  className="w-24 border border-border rounded px-2 py-1.5 text-xs bg-white"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="block text-[10px] font-medium text-text-secondary mb-1">Hasta</label>
-              <div className="flex gap-1">
-                <input
-                  type="date"
-                  value={form.fecha_hasta}
-                  onChange={e => setForm({ ...form, fecha_hasta: e.target.value })}
-                  required
-                  className="flex-1 border border-border rounded px-2 py-1.5 text-xs bg-white"
-                />
-                <input
-                  type="time"
-                  value={form.hora_hasta}
-                  onChange={e => setForm({ ...form, hora_hasta: e.target.value })}
-                  className="w-24 border border-border rounded px-2 py-1.5 text-xs bg-white"
-                />
-              </div>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <div>
-              <label className="block text-[10px] font-medium text-text-secondary mb-1">Sede</label>
-              <select
-                value={form.sede_id}
-                onChange={e => setForm({ ...form, sede_id: e.target.value })}
-                className="w-full border border-border rounded px-2 py-1.5 text-xs bg-white"
-              >
-                <option value="">Todas</option>
-                {sedes.map(s => (
-                  <option key={s.id} value={s.id}>{s.nombre}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-[10px] font-medium text-text-secondary mb-1">Motivo</label>
-              <input
-                type="text"
-                value={form.motivo}
-                onChange={e => setForm({ ...form, motivo: e.target.value })}
-                placeholder="Vacaciones, feriado, etc."
-                className="w-full border border-border rounded px-2 py-1.5 text-xs bg-white"
-              />
-            </div>
-          </div>
-          <div className="flex items-center gap-1">
-            <button type="submit" className="px-3 py-1.5 text-xs bg-green-primary text-white rounded font-medium">
-              Guardar
+        <div className="bg-white border border-border rounded-lg p-3 mb-3 space-y-2">
+          {/* Toggle puntual / semanal */}
+          <div className="flex items-center gap-1 bg-beige/50 p-0.5 rounded w-fit">
+            <button
+              type="button"
+              onClick={() => setTipo('puntual')}
+              className={`px-2.5 py-1 text-[11px] font-medium rounded transition-colors ${tipo === 'puntual' ? 'bg-green-primary text-white' : 'text-text-secondary'}`}
+            >
+              Puntual (fecha)
             </button>
-            <button type="button" onClick={() => setAdding(false)} className="px-3 py-1.5 text-xs border border-border rounded text-text-secondary">
-              Cancelar
+            <button
+              type="button"
+              onClick={() => setTipo('semanal')}
+              className={`px-2.5 py-1 text-[11px] font-medium rounded transition-colors ${tipo === 'semanal' ? 'bg-green-primary text-white' : 'text-text-secondary'}`}
+            >
+              Semanal (día de semana)
             </button>
           </div>
-        </form>
+
+          {tipo === 'puntual' ? (
+            <form onSubmit={handleAddPuntual} className="space-y-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[10px] font-medium text-text-secondary mb-1">Desde</label>
+                  <div className="flex gap-1">
+                    <input type="date" value={formP.fecha_desde} onChange={e => setFormP({ ...formP, fecha_desde: e.target.value })} required className="flex-1 border border-border rounded px-2 py-1.5 text-xs bg-white" />
+                    <input type="time" value={formP.hora_desde} onChange={e => setFormP({ ...formP, hora_desde: e.target.value })} className="w-24 border border-border rounded px-2 py-1.5 text-xs bg-white" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-medium text-text-secondary mb-1">Hasta</label>
+                  <div className="flex gap-1">
+                    <input type="date" value={formP.fecha_hasta} onChange={e => setFormP({ ...formP, fecha_hasta: e.target.value })} required className="flex-1 border border-border rounded px-2 py-1.5 text-xs bg-white" />
+                    <input type="time" value={formP.hora_hasta} onChange={e => setFormP({ ...formP, hora_hasta: e.target.value })} className="w-24 border border-border rounded px-2 py-1.5 text-xs bg-white" />
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[10px] font-medium text-text-secondary mb-1">Sede</label>
+                  <select value={formP.sede_id} onChange={e => setFormP({ ...formP, sede_id: e.target.value })} className="w-full border border-border rounded px-2 py-1.5 text-xs bg-white">
+                    <option value="">Todas</option>
+                    {sedes.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-medium text-text-secondary mb-1">Motivo</label>
+                  <input type="text" value={formP.motivo} onChange={e => setFormP({ ...formP, motivo: e.target.value })} placeholder="Vacaciones, feriado, etc." className="w-full border border-border rounded px-2 py-1.5 text-xs bg-white" />
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                <button type="submit" className="px-3 py-1.5 text-xs bg-green-primary text-white rounded font-medium">Guardar</button>
+                <button type="button" onClick={() => setAdding(false)} className="px-3 py-1.5 text-xs border border-border rounded text-text-secondary">Cancelar</button>
+              </div>
+            </form>
+          ) : (
+            <form onSubmit={handleAddRecurrente} className="space-y-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-[10px] font-medium text-text-secondary mb-1">Día</label>
+                  <select value={formR.dia_semana} onChange={e => setFormR({ ...formR, dia_semana: Number(e.target.value) as DiaSemana })} className="w-full border border-border rounded px-2 py-1.5 text-xs bg-white">
+                    {DIAS_SEMANA.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-medium text-text-secondary mb-1">Desde</label>
+                  <input type="time" value={formR.hora_desde} onChange={e => setFormR({ ...formR, hora_desde: e.target.value })} required className="w-full border border-border rounded px-2 py-1.5 text-xs bg-white" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-medium text-text-secondary mb-1">Hasta</label>
+                  <input type="time" value={formR.hora_hasta} onChange={e => setFormR({ ...formR, hora_hasta: e.target.value })} required className="w-full border border-border rounded px-2 py-1.5 text-xs bg-white" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-medium text-text-secondary mb-1">Sede</label>
+                  <select value={formR.sede_id} onChange={e => setFormR({ ...formR, sede_id: e.target.value })} className="w-full border border-border rounded px-2 py-1.5 text-xs bg-white">
+                    <option value="">Todas</option>
+                    {sedes.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10px] font-medium text-text-secondary mb-1">Motivo</label>
+                <input type="text" value={formR.motivo} onChange={e => setFormR({ ...formR, motivo: e.target.value })} placeholder="Reunión semanal, mediodía sin atención, etc." className="w-full border border-border rounded px-2 py-1.5 text-xs bg-white" />
+              </div>
+              <details className="text-[11px]">
+                <summary className="text-text-muted cursor-pointer">Vigencia (opcional)</summary>
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  <div>
+                    <label className="block text-[10px] font-medium text-text-secondary mb-1">Desde</label>
+                    <input type="date" value={formR.vigente_desde} onChange={e => setFormR({ ...formR, vigente_desde: e.target.value })} className="w-full border border-border rounded px-2 py-1.5 text-xs bg-white" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-medium text-text-secondary mb-1">Hasta</label>
+                    <input type="date" value={formR.vigente_hasta} onChange={e => setFormR({ ...formR, vigente_hasta: e.target.value })} className="w-full border border-border rounded px-2 py-1.5 text-xs bg-white" />
+                  </div>
+                </div>
+                <p className="text-text-muted mt-1">Si dejás vacías, el bloqueo aplica todas las semanas indefinidamente.</p>
+              </details>
+              <div className="flex items-center gap-1">
+                <button type="submit" className="px-3 py-1.5 text-xs bg-green-primary text-white rounded font-medium">Guardar</button>
+                <button type="button" onClick={() => setAdding(false)} className="px-3 py-1.5 text-xs border border-border rounded text-text-secondary">Cancelar</button>
+              </div>
+            </form>
+          )}
+        </div>
       )}
 
       {loading ? (
         <p className="text-xs text-text-muted">Cargando...</p>
-      ) : bloqueos.length === 0 ? (
+      ) : (puntuales.length === 0 && recurrentes.length === 0) ? (
         <p className="text-xs text-text-muted italic">Sin bloqueos cargados.</p>
       ) : (
         <ul className="space-y-1">
-          {bloqueos.map(b => (
+          {recurrentes.map(b => (
             <li key={b.id} className="flex items-center justify-between text-xs bg-white border border-border-light rounded px-3 py-2">
               <div className="min-w-0 flex-1">
-                <div className="text-text-primary font-medium truncate">{b.motivo || 'Sin motivo'}</div>
+                <div className="text-text-primary font-medium truncate flex items-center gap-1.5">
+                  <span className="text-[9px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded uppercase tracking-wide font-semibold">Semanal</span>
+                  {b.motivo || 'Sin motivo'}
+                </div>
+                <div className="text-text-muted">
+                  Todos los <strong>{diaLabel(b.dia_semana)}</strong> {b.hora_desde.slice(0,5)} – {b.hora_hasta.slice(0,5)} · {sedeNombre(b.sede_id)}
+                  {(b.vigente_desde || b.vigente_hasta) && (
+                    <span> · vigente {b.vigente_desde ? `desde ${b.vigente_desde}` : ''} {b.vigente_hasta ? `hasta ${b.vigente_hasta}` : ''}</span>
+                  )}
+                </div>
+              </div>
+              <button onClick={() => handleDeleteRecurrente(b)} className="text-text-muted hover:text-red ml-2">
+                <Trash2 size={12} />
+              </button>
+            </li>
+          ))}
+          {puntuales.map(b => (
+            <li key={b.id} className="flex items-center justify-between text-xs bg-white border border-border-light rounded px-3 py-2">
+              <div className="min-w-0 flex-1">
+                <div className="text-text-primary font-medium truncate flex items-center gap-1.5">
+                  <span className="text-[9px] bg-amber-light text-amber px-1.5 py-0.5 rounded uppercase tracking-wide font-semibold">Puntual</span>
+                  {b.motivo || 'Sin motivo'}
+                </div>
                 <div className="text-text-muted">{formatRango(b)} · {sedeNombre(b.sede_id)}</div>
               </div>
-              <button onClick={() => handleDelete(b)} className="text-text-muted hover:text-red ml-2">
+              <button onClick={() => handleDeletePuntual(b)} className="text-text-muted hover:text-red ml-2">
                 <Trash2 size={12} />
               </button>
             </li>

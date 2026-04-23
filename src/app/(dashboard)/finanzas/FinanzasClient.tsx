@@ -32,8 +32,8 @@ type CobranzaConSede = Cobranza & { sedes: Sede }
 
 type TabId = 'resumen' | 'cobranzas' | 'por-cobrar' | 'gastos'
 
-// Stub: la API /api/dolar se removió con Dentalink. En Fase 2 se puede reemplazar
-// por un hook real si volvemos a mostrar conversión USD.
+// Stub: la API /api/dolar no está implementada. Si se reactiva el toggle USD,
+// reemplazar por un hook real que pegue al endpoint de cotización.
 function useDolarOficial() {
   return { cotizacion: null as number | null, loadingDolar: false, fetchDolar: () => {} }
 }
@@ -589,7 +589,7 @@ function CobranzasTab({ syncKey, sedes }: { syncKey: number; sedes: Sede[] }) {
     } else if (ids.length === 1) {
       porSedeCobranza[ids[0]] = (porSedeCobranza[ids[0]] || 0) + monto
     } else if (c.sede_id) {
-      // Dentalink o entrada vieja con sede_id: sumar directo a esa sede
+      // Cobranza con sede_id singular: sumar directo a esa sede
       porSedeCobranza[c.sede_id] = (porSedeCobranza[c.sede_id] || 0) + monto
     } else {
       // General (sin sede_id ni sede_ids): dividir entre todas
@@ -944,7 +944,6 @@ function CobranzasTab({ syncKey, sedes }: { syncKey: number; sedes: Sede[] }) {
               <tbody>
                 {cobranzasFiltradas.map((c) => {
                   const style = TIPO_PAGO_LABELS[c.tipo_pago] || TIPO_PAGO_LABELS.efectivo
-                  const isDentalink = c.tratamiento === 'Dentalink'
                   const sedeLabel = getCobranzaSedeLabel(c)
                   const sedeIds = c.sede_ids || []
                   const cantSedes = sedeIds.length > 1 ? sedeIds.length : 1
@@ -957,11 +956,7 @@ function CobranzasTab({ syncKey, sedes }: { syncKey: number; sedes: Sede[] }) {
                         )}
                       </td>
                       <td className="px-4 py-3 text-text-secondary hidden md:table-cell">
-                        {isDentalink ? (
-                          <span className="text-xs bg-blue-light text-blue px-2 py-0.5 rounded-full">Dentalink</span>
-                        ) : (
-                          c.tratamiento || '\u2014'
-                        )}
+                        {c.tratamiento || '\u2014'}
                       </td>
                       <td className="px-4 py-3 hidden sm:table-cell">
                         <span className="text-text-secondary text-xs">{sedeLabel}</span>
@@ -990,15 +985,13 @@ function CobranzasTab({ syncKey, sedes }: { syncKey: number; sedes: Sede[] }) {
                       </td>
                       {canDelete && (
                         <td className="px-4 py-3 text-center">
-                          {!isDentalink && (
-                            <button
-                              onClick={() => handleDelete(c.id)}
-                              className="text-text-muted hover:text-red transition-colors"
-                              title="Eliminar"
-                            >
-                              <X size={14} />
-                            </button>
-                          )}
+                          <button
+                            onClick={() => handleDelete(c.id)}
+                            className="text-text-muted hover:text-red transition-colors"
+                            title="Eliminar"
+                          >
+                            <X size={14} />
+                          </button>
                         </td>
                       )}
                     </tr>
@@ -1110,7 +1103,7 @@ function PorCobrarTab({ syncKey, sedes }: { syncKey: number; sedes: Sede[] }) {
         <AlertCircle size={40} className="mx-auto text-text-muted mb-3" />
         <h3 className="text-lg font-semibold text-text-primary mb-2">Sin datos</h3>
         <p className="text-sm text-text-secondary max-w-md mx-auto">
-          Usá el botón &quot;Sync Deudas&quot; para traer los tratamientos pendientes de Dentalink.
+          Cuando cargues deudas pendientes de pacientes (cuotas, tratamientos en curso) van a aparecer acá.
         </p>
       </div>
     )

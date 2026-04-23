@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import type { Turno, Profesional, AgendaBloqueo, HorarioAtencion } from '@/types/database'
+import type { Turno, Profesional, AgendaBloqueo, BloqueoRecurrente, HorarioAtencion } from '@/types/database'
 
 const ESTADO_COLORS: Record<string, string> = {
   agendado: 'bg-blue-light/80 text-blue border-blue/30',
@@ -16,6 +16,7 @@ interface Props {
   profesionales: Profesional[]
   turnos: Turno[]
   bloqueos: AgendaBloqueo[]
+  bloqueosRecurrentes: BloqueoRecurrente[]
   horarios: HorarioAtencion[]
   /** Sede activa (para filtrar bloqueos de sede). null = todas. */
   sedeId: string | null
@@ -45,7 +46,7 @@ function minutesToHHMM(min: number) {
 }
 
 export default function AgendaGrid({
-  fecha, profesionales, turnos, bloqueos, horarios,
+  fecha, profesionales, turnos, bloqueos, bloqueosRecurrentes, horarios,
   sedeId, slotMinutes = 30, startHour = 8, endHour = 21,
   onClickSlot, onClickTurno,
 }: Props) {
@@ -70,6 +71,8 @@ export default function AgendaGrid({
     return m
   }, [turnos])
 
+  const fechaDate = useMemo(() => fecha, [fecha]) // alias estable
+
   const { perProf: bloqueosPerProf, generales: bloqueosGenerales } = useMemo(() => {
     const m: Record<string, AgendaBloqueo[]> = {}
     const generales: AgendaBloqueo[] = []
@@ -84,6 +87,25 @@ export default function AgendaGrid({
     }
     return { perProf: m, generales }
   }, [bloqueos, sedeId])
+
+  // Bloqueos recurrentes vigentes para el día de semana actual.
+  const { perProf: recurrPerProf, generales: recurrGenerales } = useMemo(() => {
+    const m: Record<string, BloqueoRecurrente[]> = {}
+    const generales: BloqueoRecurrente[] = []
+    for (const r of bloqueosRecurrentes) {
+      if (r.dia_semana !== dayOfWeek) continue
+      if (sedeId && r.sede_id && r.sede_id !== sedeId) continue
+      if (r.vigente_desde && r.vigente_desde > fechaDate) continue
+      if (r.vigente_hasta && r.vigente_hasta < fechaDate) continue
+      if (r.profesional_id) {
+        if (!m[r.profesional_id]) m[r.profesional_id] = []
+        m[r.profesional_id].push(r)
+      } else {
+        generales.push(r)
+      }
+    }
+    return { perProf: m, generales }
+  }, [bloqueosRecurrentes, dayOfWeek, sedeId, fechaDate])
 
   const horariosByProf = useMemo(() => {
     const m: Record<string, HorarioAtencion[]> = {}
@@ -137,6 +159,7 @@ export default function AgendaGrid({
           {profesionales.map(prof => {
             const horariosProf = horariosByProf[prof.id] || []
             const bloqueosProf = [...bloqueosGenerales, ...(bloqueosPerProf[prof.id] || [])]
+            const recurrProf = [...recurrGenerales, ...(recurrPerProf[prof.id] || [])]
             const turnosProf = turnosByProf[prof.id] || []
             return (
               <div
@@ -164,11 +187,18 @@ export default function AgendaGrid({
                     )
                     const slotInstant = new Date(baseDate.getTime() + min * 60 * 1000)
                     const slotEndInstant = new Date(slotInstant.getTime() + slotMin * 60 * 1000)
-                    const bloqueado = bloqueosProf.some(b => {
+                    const bloqueadoPuntual = bloqueosProf.some(b => {
                       const bd = new Date(b.fecha_desde)
                       const bh = new Date(b.fecha_hasta)
                       return bd < slotEndInstant && bh > slotInstant
                     })
+                    const slotEndMin = min + slotMin
+                    const bloqueadoRec = recurrProf.some(r => {
+                      const rIni = timeToMinutes(r.hora_desde)
+                      const rFin = timeToMinutes(r.hora_hasta)
+                      return rIni < slotEndMin && rFin > min
+                    })
+                    const bloqueado = bloqueadoPuntual || bloqueadoRec
                     const hhmm = minutesToHHMM(min)
                     return (
                       <button
