@@ -193,6 +193,7 @@ export interface Gasto {
 export interface Deuda {
   id: string
   clinic_id?: string
+  patient_id?: string | null
   paciente: string
   tratamiento: string | null
   monto_total: number
@@ -205,6 +206,24 @@ export interface Deuda {
   created_at: string
   // joins
   sede?: Sede
+}
+
+/** Fila de la VIEW `por_cobrar` — solo deudas con saldo > 0. */
+export interface DeudaPendiente {
+  id: string
+  clinic_id?: string
+  sede_id: string | null
+  patient_id: string | null
+  nombre_paciente: string
+  nombre_tratamiento: string | null
+  monto_total: number
+  monto_cobrado: number
+  saldo: number
+  fecha_inicio: string
+  fecha_vencimiento: string | null
+  estado: EstadoDeuda
+  notas: string | null
+  created_at: string
 }
 
 export interface Turno {

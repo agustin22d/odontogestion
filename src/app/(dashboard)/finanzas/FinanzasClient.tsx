@@ -18,12 +18,13 @@ import {
   Clock,
   Receipt,
   AlertCircle,
+  Check,
   TrendingUp,
   TrendingDown,
   CalendarClock,
   Download,
 } from 'lucide-react'
-import type { Sede, Cobranza } from '@/types/database'
+import type { Sede, Cobranza, DeudaPendiente } from '@/types/database'
 import { getArgentinaToday } from '@/lib/utils/dates'
 import { downloadCsv, moneyCsv } from '@/lib/utils/csv'
 import PacienteTypeahead from '@/components/PacienteTypeahead'
@@ -434,7 +435,47 @@ function CobranzasTab({ syncKey, sedes }: { syncKey: number; sedes: Sede[] }) {
     moneda: 'ARS' as string,
     monto_usd: '',
     tipo_cambio: '',
+    deuda_aplicar_id: null as string | null,
   })
+
+  // Deudas pendientes del paciente seleccionado
+  const [deudasPendientes, setDeudasPendientes] = useState<DeudaPendiente[]>([])
+
+  useEffect(() => {
+    if (!formData.patient_id) {
+      setDeudasPendientes([])
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      const { data, error } = await supabase
+        .from('por_cobrar')
+        .select('*')
+        .eq('patient_id', formData.patient_id)
+        .gt('saldo', 0)
+        .order('fecha_vencimiento', { ascending: true, nullsFirst: false })
+      if (!cancelled && !error) {
+        setDeudasPendientes((data as unknown as DeudaPendiente[]) || [])
+      }
+    })()
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.patient_id])
+
+  const aplicarDeuda = (d: DeudaPendiente) => {
+    setFormData(f => ({
+      ...f,
+      deuda_aplicar_id: d.id,
+      tratamiento: d.nombre_tratamiento || f.tratamiento,
+      monto: String(d.saldo),
+      es_cuota: true,
+      notas: f.notas || `Pago aplicado a deuda ${d.nombre_tratamiento || ''}`.trim(),
+    }))
+  }
+
+  const desaplicarDeuda = () => {
+    setFormData(f => ({ ...f, deuda_aplicar_id: null }))
+  }
 
   const fetchCobranzas = useCallback(async () => {
     setLoading(true)
@@ -525,7 +566,18 @@ function CobranzasTab({ syncKey, sedes }: { syncKey: number; sedes: Sede[] }) {
     if (error) {
       alert('Error al guardar: ' + error.message)
     } else {
-      setFormData({ ...formData, paciente: '', paciente_apellido: null, patient_id: null, tratamiento: '', monto: '', monto_usd: '', tipo_cambio: '', es_cuota: false, notas: '', moneda: 'ARS' })
+      // Si el user eligió aplicar este pago a una deuda pendiente,
+      // descontar el monto del saldo (la RPC recalcula estado a parcial/pagado).
+      if (formData.deuda_aplicar_id) {
+        const { error: rpcErr } = await supabase.rpc('aplicar_pago_deuda', {
+          p_deuda_id: formData.deuda_aplicar_id,
+          p_monto: montoARS,
+        })
+        if (rpcErr) {
+          alert('Cobranza guardada, pero NO se pudo aplicar a la deuda: ' + rpcErr.message)
+        }
+      }
+      setFormData({ ...formData, paciente: '', paciente_apellido: null, patient_id: null, tratamiento: '', monto: '', monto_usd: '', tipo_cambio: '', es_cuota: false, notas: '', moneda: 'ARS', deuda_aplicar_id: null })
       setShowForm(false)
       fetchCobranzas()
     }
@@ -629,7 +681,7 @@ function CobranzasTab({ syncKey, sedes }: { syncKey: number; sedes: Sede[] }) {
         <form onSubmit={handleSubmit} className="bg-surface rounded-xl border border-border p-5 mb-6">
           <h2 className="text-sm font-semibold text-text-primary mb-4">Nueva cobranza manual</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div>
+            <div className="sm:col-span-2 lg:col-span-3">
               <label className="block text-xs font-medium text-text-secondary mb-1">Paciente *</label>
               <PacienteTypeahead
                 value={{
@@ -642,9 +694,76 @@ function CobranzasTab({ syncKey, sedes }: { syncKey: number; sedes: Sede[] }) {
                   patient_id: v.patient_id,
                   paciente: v.nombre,
                   paciente_apellido: v.apellido,
+                  // Si cambia el paciente, soltamos la deuda aplicada
+                  deuda_aplicar_id: v.patient_id === formData.patient_id ? formData.deuda_aplicar_id : null,
                 })}
                 required
               />
+
+              {/* Deudas pendientes del paciente seleccionado */}
+              {formData.patient_id && deudasPendientes.length > 0 && (
+                <div className="mt-2 bg-amber-light/40 border border-amber/30 rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold text-amber flex items-center gap-1.5">
+                      <AlertCircle size={12} />
+                      Este paciente tiene {deudasPendientes.length} deuda{deudasPendientes.length !== 1 ? 's' : ''} pendiente{deudasPendientes.length !== 1 ? 's' : ''}
+                    </p>
+                    {formData.deuda_aplicar_id && (
+                      <button
+                        type="button"
+                        onClick={desaplicarDeuda}
+                        className="text-[10px] text-text-muted hover:text-text-primary underline"
+                      >
+                        Quitar aplicación
+                      </button>
+                    )}
+                  </div>
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                    {deudasPendientes.map(d => {
+                      const isSelected = formData.deuda_aplicar_id === d.id
+                      const venceTxt = d.fecha_vencimiento
+                        ? new Date(d.fecha_vencimiento + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })
+                        : 'sin fecha'
+                      const vencida = d.fecha_vencimiento && d.fecha_vencimiento < getArgentinaToday()
+                      return (
+                        <button
+                          key={d.id}
+                          type="button"
+                          onClick={() => isSelected ? desaplicarDeuda() : aplicarDeuda(d)}
+                          className={`w-full text-left text-xs rounded border px-2.5 py-1.5 transition-colors flex items-center justify-between gap-2 ${
+                            isSelected
+                              ? 'bg-green-primary text-white border-green-primary'
+                              : 'bg-white border-border hover:border-amber'
+                          }`}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className={`font-medium truncate ${isSelected ? 'text-white' : 'text-text-primary'}`}>
+                              {d.nombre_tratamiento || 'Sin tratamiento'}
+                            </div>
+                            <div className={`text-[10px] truncate ${isSelected ? 'text-white/80' : 'text-text-muted'}`}>
+                              Total {Number(d.monto_total).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 })}
+                              {' · cobrado '}
+                              {Number(d.monto_cobrado).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 })}
+                              {' · vence '}<span className={vencida && !isSelected ? 'text-red font-medium' : ''}>{venceTxt}</span>
+                            </div>
+                          </div>
+                          <div className={`text-right shrink-0 ${isSelected ? 'text-white' : 'text-amber font-semibold'}`}>
+                            <div className="text-[9px] uppercase tracking-wide opacity-70">Saldo</div>
+                            <div className="text-sm font-semibold">
+                              {Number(d.saldo).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 })}
+                            </div>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {formData.deuda_aplicar_id && (
+                    <p className="text-[10px] text-green-primary mt-2 flex items-center gap-1">
+                      <Check size={10} /> Al guardar, este pago se descuenta del saldo de la deuda seleccionada
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
             <div>
               <label className="block text-xs font-medium text-text-secondary mb-1">Tratamiento</label>
