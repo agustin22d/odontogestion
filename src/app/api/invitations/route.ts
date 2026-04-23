@@ -30,10 +30,26 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Faltan email o role_id' }, { status: 400 })
   }
 
-  // Insert (RLS valida settings.users via has_permission)
+  // Obtener clinic_id + nombre de la clínica del invitador.
+  // invitations.clinic_id es NOT NULL y no tiene trigger auto_set_clinic_id,
+  // así que hay que pasarlo explícito para que pase el RLS WITH CHECK.
+  const { data: cu, error: cuErr } = await supabase
+    .from('clinic_users')
+    .select('clinic_id, clinics(nombre)')
+    .eq('auth_user_id', user.id)
+    .eq('activo', true)
+    .maybeSingle()
+  if (cuErr || !cu) {
+    return NextResponse.json({ error: 'Sin membresía activa en una clínica' }, { status: 403 })
+  }
+  const clinicData = cu as unknown as { clinic_id: string; clinics: { nombre: string } | null }
+  const clinic_id = clinicData.clinic_id
+  const clinicNombre = clinicData.clinics?.nombre || 'tu clínica'
+
+  // Insert (RLS valida settings.users via has_permission y clinic_id match)
   const { data: inserted, error: insErr } = await supabase
     .from('invitations')
-    .insert({ email, role_id, sede_id, invited_by: user.id })
+    .insert({ clinic_id, email, role_id, sede_id, invited_by: user.id })
     .select('token, expires_at')
     .single()
 
@@ -41,23 +57,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: insErr.message }, { status: 400 })
   }
   const { token, expires_at } = inserted as unknown as { token: string; expires_at: string }
-
-  // Datos para el template
-  const { data: clinicRow } = await supabase
-    .from('clinics')
-    .select('nombre')
-    .eq('id', user.user_metadata?.clinic_id || '')
-    .maybeSingle()
-  // Fallback: usamos clinic_users del invitador para sacar el nombre de la clínica
-  let clinicNombre = (clinicRow as { nombre?: string } | null)?.nombre || ''
-  if (!clinicNombre) {
-    const { data: cu } = await supabase
-      .from('clinic_users')
-      .select('clinics(nombre)')
-      .eq('auth_user_id', user.id)
-      .maybeSingle()
-    clinicNombre = (cu as { clinics?: { nombre?: string } } | null)?.clinics?.nombre || 'tu clínica'
-  }
 
   const { data: roleRow } = await supabase
     .from('roles')
