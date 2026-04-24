@@ -12,6 +12,7 @@ interface AuthContextType {
   hasPermission: (perm: string) => boolean
   hasFeature: (feature: PlanFeatureKey) => boolean
   planFeatures: PlanFeatures
+  isSuperAdmin: boolean
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -21,6 +22,7 @@ const AuthContext = createContext<AuthContextType>({
   hasPermission: () => false,
   hasFeature: () => false,
   planFeatures: FEATURES_DEFAULT,
+  isSuperAdmin: false,
 })
 
 export function useAuth() {
@@ -60,6 +62,7 @@ export function AuthProvider({ children, initialUser }: { children: React.ReactN
   // ProBadge que también lee la misma env var.
   const isDemo = shouldShowProBadges()
   const [planFeatures, setPlanFeatures] = useState<PlanFeatures>(isDemo ? FEATURES_ALL_PRO : FEATURES_DEFAULT)
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
   const supabase = createClient()
   const hiddenAtRef = useRef(0)
 
@@ -77,6 +80,18 @@ export function AuthProvider({ children, initialUser }: { children: React.ReactN
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialUser?.clinic_id, isDemo])
+
+  // Chequear si el usuario es super-admin para mostrar el link en sidebar.
+  useEffect(() => {
+    if (!initialUser) return
+    let cancelled = false
+    supabase.rpc('is_super_admin').then((res: { data: unknown; error: unknown }) => {
+      if (cancelled || res.error) return
+      setIsSuperAdmin(res.data === true)
+    })
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialUser?.id])
 
   // DO NOT use onAuthStateChange here.
   // Supabase's _recoverAndRefresh() fires SIGNED_IN on EVERY visibility
@@ -127,7 +142,7 @@ export function AuthProvider({ children, initialUser }: { children: React.ReactN
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, signOut: handleSignOut, hasPermission, hasFeature, planFeatures }}>
+    <AuthContext.Provider value={{ user, loading, signOut: handleSignOut, hasPermission, hasFeature, planFeatures, isSuperAdmin }}>
       {children}
     </AuthContext.Provider>
   )
