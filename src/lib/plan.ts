@@ -41,8 +41,22 @@ interface PlanTier {
   precio: number
   max_sedes: number
   max_users: number
+  /** Horas de configuración / soporte incluidas en el primer mes. */
+  horas_soporte: number
   incluye: string[]
   no_incluye: string[]
+}
+
+/**
+ * En modo demo queremos que el usuario navegue como Pro (ve todas las
+ * funcionalidades) pero con un chip "Pro" sutil al lado del título de los
+ * módulos premium para que entienda qué viene en el plan superior.
+ *
+ * Activación: setear `NEXT_PUBLIC_SHOW_PRO_BADGES=true` en Vercel Env Vars
+ * SOLO en el proyecto demo. En clínicas reales NO se setea.
+ */
+export function shouldShowProBadges(): boolean {
+  return process.env.NEXT_PUBLIC_SHOW_PRO_BADGES === 'true'
 }
 
 export const PLAN_TIERS: PlanTier[] = [
@@ -51,9 +65,11 @@ export const PLAN_TIERS: PlanTier[] = [
     precio: 25000,
     max_sedes: 2,
     max_users: 5,
+    horas_soporte: 10,
     incluye: [
       'Hasta 2 sedes',
       'Hasta 5 usuarios',
+      '10 horas de configuración y soporte el primer mes',
       'Dashboard operativo (turnos, no-shows, tasa de show)',
       'Agenda con profesionales y bloqueos',
       'Pacientes con historial unificado',
@@ -76,9 +92,11 @@ export const PLAN_TIERS: PlanTier[] = [
     precio: 60000,
     max_sedes: 10,
     max_users: 50,
+    horas_soporte: 30,
     incluye: [
       'Hasta 10 sedes',
       'Hasta 50 usuarios',
+      '30 horas de configuración y soporte el primer mes',
       'Todo lo de Starter más:',
       'Caja completa: cobranzas, gastos y por cobrar (deudas con saldo)',
       'Aplicar pagos a deudas con un click (descuenta saldo automáticamente)',

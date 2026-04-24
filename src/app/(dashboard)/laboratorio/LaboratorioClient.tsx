@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/components/AuthProvider'
+import ProBadge from '@/components/ProBadge'
 import {
   FlaskConical,
   Plus,
@@ -278,7 +279,10 @@ export default function LaboratorioClient() {
       {/* Header */}
       <div className="flex items-center justify-between gap-3 mb-6">
         <div>
-          <h1 className="font-display text-2xl font-semibold text-text-primary mb-1">Laboratorio</h1>
+          <div className="flex items-center gap-2 mb-1">
+            <h1 className="font-display text-2xl font-semibold text-text-primary">Laboratorio</h1>
+            <ProBadge />
+          </div>
           <p className="text-sm text-text-secondary hidden sm:block">Seguimiento de coronas y prótesis</p>
         </div>
       </div>
