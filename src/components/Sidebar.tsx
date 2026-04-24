@@ -14,6 +14,7 @@ import {
   Settings,
   FlaskConical,
   Users,
+  ShieldCheck,
 } from 'lucide-react'
 import { useState } from 'react'
 import type { PlanFeatureKey } from '@/lib/plan'
@@ -39,7 +40,7 @@ const navItems: NavItem[] = [
 
 export default function Sidebar({ logoUrl }: { logoUrl?: string | null }) {
   const pathname = usePathname()
-  const { user, signOut, hasPermission, hasFeature } = useAuth()
+  const { user, signOut, hasPermission, hasFeature, isSuperAdmin } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 
@@ -155,6 +156,19 @@ export default function Sidebar({ logoUrl }: { logoUrl?: string | null }) {
               <p className="text-sm font-medium text-text-primary truncate">{user.nombre}</p>
               <p className="text-xs text-text-muted truncate">{user.email}</p>
             </div>
+          )}
+          {isSuperAdmin && (
+            <Link
+              href="/sysadmin"
+              onClick={() => setMobileOpen(false)}
+              className={`flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm text-text-secondary hover:bg-amber-50 hover:text-amber-700 transition-colors mb-1
+                ${collapsed ? 'justify-center px-0' : ''}
+              `}
+              title={collapsed ? 'Super-admin' : undefined}
+            >
+              <ShieldCheck size={18} />
+              {!collapsed && 'Super-admin'}
+            </Link>
           )}
           <button
             onClick={signOut}
