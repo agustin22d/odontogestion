@@ -48,6 +48,7 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith('/signup') ||
     pathname.startsWith('/invite') ||
     pathname.startsWith('/demo') ||
+    pathname.startsWith('/sysadmin') ||
     pathname.startsWith('/api/')
 
   // Check if session JWT is expired (applies to ALL routes)

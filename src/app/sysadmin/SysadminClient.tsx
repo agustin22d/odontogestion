@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { Building2, Search, Filter, ShieldCheck, LogOut, ChevronDown, ChevronRight, RefreshCcw } from 'lucide-react'
 import ChangePlanModal from './ChangePlanModal'
@@ -93,9 +92,6 @@ export default function SysadminClient() {
             <button onClick={fetchClinicas} className="p-2 text-text-muted hover:text-text-primary" title="Refrescar">
               <RefreshCcw size={16} />
             </button>
-            <Link href="/dashboard" className="text-xs text-text-secondary hover:text-text-primary px-2 py-1">
-              Volver al dashboard
-            </Link>
             <button onClick={handleLogout} className="text-xs text-text-secondary hover:text-red flex items-center gap-1.5 px-2 py-1">
               <LogOut size={14} /> Salir
             </button>
