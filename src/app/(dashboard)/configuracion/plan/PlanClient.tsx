@@ -10,7 +10,7 @@ interface SubscriptionData {
   plan: { nombre: string; precio_mensual: number; max_sedes: number; max_users: number } | null
 }
 
-const ARS = (n: number) => n.toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })
+const USD = (n: number) => `USD ${n.toLocaleString('en-US')}`
 
 export default function PlanClient({ subscription }: { subscription: SubscriptionData | null }) {
   const planActual = subscription?.plan?.nombre ?? 'Sin suscripción'
@@ -33,7 +33,7 @@ export default function PlanClient({ subscription }: { subscription: Subscriptio
             <h2 className="font-display text-xl font-semibold text-text-primary">{planActual}</h2>
             {subscription?.plan && (
               <p className="text-sm text-text-secondary mt-1">
-                {ARS(subscription.plan.precio_mensual)} / mes · hasta {subscription.plan.max_sedes} sedes · hasta {subscription.plan.max_users} usuarios
+                {USD(subscription.plan.precio_mensual)} / mes · hasta {subscription.plan.max_sedes} sedes · hasta {subscription.plan.max_users} usuarios
               </p>
             )}
           </div>
@@ -80,7 +80,7 @@ export default function PlanClient({ subscription }: { subscription: Subscriptio
                 )}
               </div>
               <p className="text-2xl font-semibold text-text-primary mb-1">
-                {ARS(plan.precio)}
+                {USD(plan.precio_usd)}
                 <span className="text-sm font-normal text-text-muted"> / mes</span>
               </p>
               <p className="text-xs text-text-muted mb-1">
