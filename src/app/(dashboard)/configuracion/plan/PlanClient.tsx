@@ -83,8 +83,11 @@ export default function PlanClient({ subscription }: { subscription: Subscriptio
                 {ARS(plan.precio)}
                 <span className="text-sm font-normal text-text-muted"> / mes</span>
               </p>
+              <p className="text-xs text-text-muted mb-1">
+                Hasta {plan.max_sedes} sedes · {plan.max_users} usuarios
+              </p>
               <p className="text-xs text-text-muted mb-4">
-                Hasta {plan.max_sedes} sede{plan.max_sedes !== 1 ? 's' : ''} y {plan.max_users} usuarios
+                <span className="font-medium text-text-secondary">{plan.horas_soporte} hs</span> de configuración y soporte el primer mes
               </p>
 
               <ul className="space-y-2 mb-4 flex-1">
