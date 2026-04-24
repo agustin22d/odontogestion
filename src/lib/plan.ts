@@ -55,9 +55,27 @@ interface PlanTier {
  *
  * Activación: setear `NEXT_PUBLIC_SHOW_PRO_BADGES=true` en Vercel Env Vars
  * SOLO en el proyecto demo. En clínicas reales NO se setea.
+ *
+ * Esta misma flag además fuerza `hasFeature(*)` a `true` en el AuthProvider
+ * (override demo) — así el deploy demo siempre muestra Pro completo,
+ * independiente de qué plan tenga la clínica demo en la DB. Evita que un
+ * cambio de email/clínica/suscripción rompa el feeling de la demo.
  */
 export function shouldShowProBadges(): boolean {
   return process.env.NEXT_PUBLIC_SHOW_PRO_BADGES === 'true'
+}
+
+/** Set con TODAS las features en true. Override usado en modo demo. */
+export const FEATURES_ALL_PRO: PlanFeatures = {
+  finanzas: true,
+  laboratorio: true,
+  stock: true,
+  importar_excel: true,
+  export_csv: true,
+  gastos_recurrentes: true,
+  email_invitations: true,
+  white_label: true,
+  evolucion_anual: true,
 }
 
 export const PLAN_TIERS: PlanTier[] = [

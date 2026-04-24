@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { User } from '@/types/database'
-import { FEATURES_DEFAULT, type PlanFeatureKey, type PlanFeatures } from '@/lib/plan'
+import { FEATURES_ALL_PRO, FEATURES_DEFAULT, shouldShowProBadges, type PlanFeatureKey, type PlanFeatures } from '@/lib/plan'
 
 interface AuthContextType {
   user: User | null
@@ -53,13 +53,21 @@ function forceLogout() {
 export function AuthProvider({ children, initialUser }: { children: React.ReactNode; initialUser: User | null }) {
   const [user] = useState<User | null>(initialUser)
   const [loading] = useState(false)
-  const [planFeatures, setPlanFeatures] = useState<PlanFeatures>(FEATURES_DEFAULT)
+  // En el deploy demo (NEXT_PUBLIC_SHOW_PRO_BADGES=true) forzamos Pro completo
+  // de entrada, sin esperar el RPC. Así el flow no pasa nunca por el upsell card
+  // ni por sidebar grayed-out aunque la suscripción de la clínica demo esté
+  // mal seteada en la DB. Los chips "Pro" siguen apareciendo gracias a
+  // ProBadge que también lee la misma env var.
+  const isDemo = shouldShowProBadges()
+  const [planFeatures, setPlanFeatures] = useState<PlanFeatures>(isDemo ? FEATURES_ALL_PRO : FEATURES_DEFAULT)
   const supabase = createClient()
   const hiddenAtRef = useRef(0)
 
   // Fetch plan features once at mount. No auth listener needed — this is per-clinic
   // and only changes when a super-admin bumps the plan, which is rare.
+  // En modo demo NO consultamos: el override de FEATURES_ALL_PRO ya está aplicado.
   useEffect(() => {
+    if (isDemo) return
     if (!initialUser) return
     let cancelled = false
     supabase.rpc('get_plan_features').then((res: { data: unknown; error: unknown }) => {
@@ -68,7 +76,7 @@ export function AuthProvider({ children, initialUser }: { children: React.ReactN
     })
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialUser?.clinic_id])
+  }, [initialUser?.clinic_id, isDemo])
 
   // DO NOT use onAuthStateChange here.
   // Supabase's _recoverAndRefresh() fires SIGNED_IN on EVERY visibility
