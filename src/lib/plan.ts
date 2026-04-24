@@ -3,6 +3,7 @@
 // 20260424000002_planes_starter_pro.sql.
 
 export type PlanFeatureKey =
+  | 'finanzas'
   | 'laboratorio'
   | 'stock'
   | 'importar_excel'
@@ -18,6 +19,7 @@ export type PlanFeatures = Partial<Record<PlanFeatureKey, boolean>>
 // Mejor mostrar el feature como bloqueado y que el user vea el upsell que
 // dejarlo abierto y que choque contra una validación del backend.
 export const FEATURES_DEFAULT: PlanFeatures = {
+  finanzas: false,
   laboratorio: false,
   stock: true,
   importar_excel: false,
@@ -52,13 +54,14 @@ export const PLAN_TIERS: PlanTier[] = [
     incluye: [
       'Hasta 2 sedes',
       'Hasta 5 usuarios',
-      'Dashboard, Turnos, Finanzas',
-      'Stock con alertas',
+      'Dashboard operativo (turnos, no-shows, tasa de show)',
+      'Agenda con profesionales y bloqueos',
       'Pacientes con historial unificado',
-      'Agenda con bloqueos',
+      'Stock con alertas y pedido de reposición',
       'Soporte por email',
     ],
     no_incluye: [
+      'Caja: cobranzas, gastos y por cobrar',
       'Laboratorio',
       'Import Excel masivo',
       'Export CSV',
@@ -77,6 +80,8 @@ export const PLAN_TIERS: PlanTier[] = [
       'Hasta 10 sedes',
       'Hasta 50 usuarios',
       'Todo lo de Starter más:',
+      'Caja completa: cobranzas, gastos y por cobrar (deudas con saldo)',
+      'Aplicar pagos a deudas con un click (descuenta saldo automáticamente)',
       'Laboratorio con historial de estados',
       'Import Excel (turnos / cobranzas / gastos)',
       'Export CSV en finanzas',

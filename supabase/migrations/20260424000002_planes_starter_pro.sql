@@ -22,7 +22,7 @@ VALUES (
   2,
   5,
   25000,
-  '{"laboratorio":false,"stock":true,"importar_excel":false,"export_csv":false,"gastos_recurrentes":false,"email_invitations":false,"white_label":false,"evolucion_anual":false}'::jsonb,
+  '{"finanzas":false,"laboratorio":false,"stock":true,"importar_excel":false,"export_csv":false,"gastos_recurrentes":false,"email_invitations":false,"white_label":false,"evolucion_anual":false}'::jsonb,
   1,
   true
 )
@@ -40,7 +40,7 @@ VALUES (
   10,
   50,
   60000,
-  '{"laboratorio":true,"stock":true,"importar_excel":true,"export_csv":true,"gastos_recurrentes":true,"email_invitations":true,"white_label":true,"evolucion_anual":true}'::jsonb,
+  '{"finanzas":true,"laboratorio":true,"stock":true,"importar_excel":true,"export_csv":true,"gastos_recurrentes":true,"email_invitations":true,"white_label":true,"evolucion_anual":true}'::jsonb,
   2,
   true
 )
