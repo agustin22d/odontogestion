@@ -23,9 +23,9 @@ export async function POST(req: Request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
 
-  const { data: profile } = await supabase.from('users').select('rol').eq('id', user.id).single()
-  if (profile?.rol !== 'admin') {
-    return NextResponse.json({ error: 'Solo admin puede importar' }, { status: 403 })
+  const { data: canImport } = await supabase.rpc('has_permission', { perm: 'importar_excel' })
+  if (!canImport) {
+    return NextResponse.json({ error: 'Sin permiso para importar' }, { status: 403 })
   }
 
   const formData = await req.formData()
@@ -99,15 +99,13 @@ export async function POST(req: Request) {
         return {
           fecha: formatDate(r.fecha, idx + 2, errors),
           sede_id: sedeId,
-          sede_ids: [sedeId],
-          user_id: user.id,
+          created_by: user.id,
           paciente: String(r.paciente ?? '').trim(),
           tratamiento: String(r.tratamiento ?? 'Sin especificar').trim(),
           tipo_pago: normalizeTipoPago(r.tipo_pago),
           monto,
           es_cuota: false,
           notas: r.notas ? String(r.notas).trim() : null,
-          moneda: 'ARS',
         }
       })
       .filter((r): r is NonNullable<typeof r> => r !== null && !!r.fecha && !!r.paciente)
@@ -129,14 +127,13 @@ export async function POST(req: Request) {
         }
         return {
           fecha: formatDate(r.fecha, idx + 2, errors),
-          sede_ids: sedeId ? [sedeId] : [],
-          user_id: user.id,
+          sede_id: sedeId ?? null,
+          created_by: user.id,
           concepto: String(r.concepto ?? '').trim(),
           categoria: String(r.categoria ?? 'otros').toLowerCase().trim(),
           monto,
           tipo: 'variable' as const,
-          estado: normalizeEstadoGasto(r.estado),
-          moneda: 'ARS',
+          estado_pago: normalizeEstadoGasto(r.estado),
         }
       })
       .filter((r): r is NonNullable<typeof r> => r !== null && !!r.fecha && !!r.concepto)

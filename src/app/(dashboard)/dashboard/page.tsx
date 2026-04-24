@@ -20,6 +20,8 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recha
 import type { Sede } from '@/types/database'
 import { getArgentinaToday, getArgentinaDate, formatFechaHoyAR } from '@/lib/utils/dates'
 import EvolucionAnual from './EvolucionAnual'
+import { useHasFeature } from '@/components/AuthProvider'
+import Link from 'next/link'
 
 type RangoPreset = 'hoy' | 'semana' | 'mes' | 'anio' | 'custom'
 
@@ -45,6 +47,8 @@ export default function DashboardPage() {
 
 function AdminDashboard() {
   const supabase = createClient()
+  const hasEvolucionAnual = useHasFeature('evolucion_anual')
+  const hasFinanzas = useHasFeature('finanzas')
   const [sedes, setSedes] = useState<Sede[]>([])
   const [sedeFilter, setSedeFilter] = useState<string>('todas')
   const [rango, setRango] = useState<RangoPreset>('mes')
@@ -250,34 +254,54 @@ function AdminDashboard() {
         <div className="text-center text-text-muted py-12 text-sm">Cargando dashboard...</div>
       ) : (
         <>
-          {/* Row 1 — Financieros del rango */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-            <KPICard
-              icon={<DollarSign size={20} />}
-              label={`Cobrado · ${label}`}
-              value={formatMoney(cobradoRango)}
-              color="green"
-            />
-            <KPICard
-              icon={<TrendingDown size={20} />}
-              label={`Gastos pagados · ${label}`}
-              value={formatMoney(gastosRango)}
-              color="red"
-            />
-            <KPICard
-              icon={<TrendingUp size={20} />}
-              label={`Resultado · ${label}`}
-              value={formatMoney(resultado)}
-              color={resultado >= 0 ? 'green' : 'red'}
-            />
-            <KPICard
-              icon={<Clock size={20} />}
-              label="Por cobrar"
-              value={formatMoney(deudasPendientes)}
-              subtitle="Deudas activas"
-              color="gold"
-            />
-          </div>
+          {/* Row 1 — Financieros del rango (solo Pro) */}
+          {hasFinanzas ? (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+              <KPICard
+                icon={<DollarSign size={20} />}
+                label={`Cobrado · ${label}`}
+                value={formatMoney(cobradoRango)}
+                color="green"
+              />
+              <KPICard
+                icon={<TrendingDown size={20} />}
+                label={`Gastos pagados · ${label}`}
+                value={formatMoney(gastosRango)}
+                color="red"
+              />
+              <KPICard
+                icon={<TrendingUp size={20} />}
+                label={`Resultado · ${label}`}
+                value={formatMoney(resultado)}
+                color={resultado >= 0 ? 'green' : 'red'}
+              />
+              <KPICard
+                icon={<Clock size={20} />}
+                label="Por cobrar"
+                value={formatMoney(deudasPendientes)}
+                subtitle="Deudas activas"
+                color="gold"
+              />
+            </div>
+          ) : (
+            <Link
+              href="/configuracion/plan"
+              className="block bg-surface rounded-xl border border-dashed border-border p-5 mb-4 hover:bg-beige/30 transition-colors"
+            >
+              <div className="flex items-start gap-3">
+                <div className="bg-amber-100 text-amber-700 rounded-lg p-2 shrink-0">
+                  <DollarSign size={20} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <p className="text-sm font-semibold text-text-primary">Caja: cobrado, gastos, resultado y por cobrar</p>
+                    <span className="text-[10px] uppercase tracking-wider font-semibold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Pro</span>
+                  </div>
+                  <p className="text-xs text-text-muted">Activá el plan Pro para registrar cobros, gastos y deudas — y ver tu resultado neto en el dashboard.</p>
+                </div>
+              </div>
+            </Link>
+          )}
 
           {/* Row 2 — Turnos de hoy */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
@@ -301,13 +325,22 @@ function AdminDashboard() {
               subtitle={`${turnoStats.atendidos} atendidos / ${turnoStats.noShows} no-shows`}
               color={turnoStats.tasaShow >= 80 ? 'green' : turnoStats.tasaShow >= 60 ? 'amber' : 'red'}
             />
-            <KPICard
-              icon={<AlertTriangle size={20} />}
-              label="Gastos vencen hoy"
-              value={gastosVencenHoy.toString()}
-              subtitle={gastosVencenHoy > 0 ? 'Vencimientos pendientes' : 'Sin vencimientos'}
-              color={gastosVencenHoy > 0 ? 'red' : 'green'}
-            />
+            {hasFinanzas ? (
+              <KPICard
+                icon={<AlertTriangle size={20} />}
+                label="Gastos vencen hoy"
+                value={gastosVencenHoy.toString()}
+                subtitle={gastosVencenHoy > 0 ? 'Vencimientos pendientes' : 'Sin vencimientos'}
+                color={gastosVencenHoy > 0 ? 'red' : 'green'}
+              />
+            ) : (
+              <KPICard
+                icon={<XCircle size={20} />}
+                label="Cancelados hoy"
+                value={turnoStats.cancelados.toString()}
+                color={turnoStats.cancelados > 0 ? 'amber' : 'green'}
+              />
+            )}
           </div>
 
           {/* Row 3 — Operativo */}
@@ -342,14 +375,14 @@ function AdminDashboard() {
             />
           </div>
 
-          {/* Chart */}
-          {chartData.length > 0 && (
+          {/* Chart Cobranzas vs Gastos (solo Pro) */}
+          {hasFinanzas && chartData.length > 0 && (
             <div className="bg-surface rounded-xl border border-border p-5 mb-6">
               <h2 className="text-sm font-semibold text-text-primary mb-4 flex items-center gap-2">
                 <TrendingUp size={16} className="text-text-muted" />
                 Cobranzas vs Gastos · {label}
               </h2>
-              <div className="h-[220px]">
+              <div className="h-[220px] md:h-[280px] lg:h-[340px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={chartData} barGap={2}>
                     <XAxis dataKey="label" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
@@ -375,8 +408,21 @@ function AdminDashboard() {
             </div>
           )}
 
-          {/* Evolución anual: 12 meses + comparación año-vs-año */}
-          <EvolucionAnual sedeFilter={sedeFilter} />
+          {/* Evolución anual: 12 meses + comparación año-vs-año (Pro) */}
+          {hasEvolucionAnual ? (
+            <EvolucionAnual sedeFilter={sedeFilter} />
+          ) : (
+            <Link
+              href="/configuracion/plan"
+              className="block bg-surface rounded-xl border border-dashed border-border p-6 text-center hover:bg-beige/30 transition-colors mb-6"
+            >
+              <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-100 text-amber-700 text-[10px] uppercase tracking-wider font-semibold rounded-full mb-2">
+                Plan Pro
+              </div>
+              <p className="text-sm font-medium text-text-primary">Evolución anual y comparación año-vs-año</p>
+              <p className="text-xs text-text-muted mt-1">Mirá la tendencia de cobranzas, gastos y resultado de los últimos 12 meses con delta % vs el año anterior. Disponible en plan Pro.</p>
+            </Link>
+          )}
 
           {/* Turnos por sede */}
           {sedeFilter === 'todas' && turnosPorSede.length > 0 && (

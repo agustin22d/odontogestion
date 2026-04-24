@@ -57,7 +57,7 @@ export default function ConfiguracionClient() {
         <p className="text-sm text-text-secondary hidden sm:block">Clínica, sedes, equipo y roles</p>
       </div>
 
-      <div className="flex items-center gap-1 bg-surface border border-border rounded-lg p-1 mb-6 max-w-full overflow-x-auto">
+      <div className="flex items-center gap-1 bg-surface border border-border rounded-lg p-1 mb-6 max-w-full overflow-x-auto lg:overflow-x-visible lg:flex-wrap">
         {visibleTabs.map(tab => (
           <button
             key={tab.id}

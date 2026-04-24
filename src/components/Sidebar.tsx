@@ -16,27 +16,30 @@ import {
   Users,
 } from 'lucide-react'
 import { useState } from 'react'
+import type { PlanFeatureKey } from '@/lib/plan'
 
 interface NavItem {
   label: string
   href: string
   icon: React.ReactNode
   perm: string
+  /** Si está, se muestra grayed-out con badge "Pro" cuando el plan no la incluye. */
+  feature?: PlanFeatureKey
 }
 
 const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard size={20} />, perm: 'dashboard.view' },
   { label: 'Turnos', href: '/turnos', icon: <CalendarDays size={20} />, perm: 'turnos.view' },
   { label: 'Pacientes', href: '/pacientes', icon: <Users size={20} />, perm: 'pacientes.view' },
-  { label: 'Finanzas', href: '/finanzas', icon: <Wallet size={20} />, perm: 'cobranzas.view' },
+  { label: 'Finanzas', href: '/finanzas', icon: <Wallet size={20} />, perm: 'cobranzas.view', feature: 'finanzas' },
   { label: 'Stock', href: '/stock', icon: <Package size={20} />, perm: 'stock.view' },
-  { label: 'Laboratorio', href: '/laboratorio', icon: <FlaskConical size={20} />, perm: 'laboratorio.view' },
+  { label: 'Laboratorio', href: '/laboratorio', icon: <FlaskConical size={20} />, perm: 'laboratorio.view', feature: 'laboratorio' },
   { label: 'Configuración', href: '/configuracion', icon: <Settings size={20} />, perm: 'settings.clinic' },
 ]
 
 export default function Sidebar({ logoUrl }: { logoUrl?: string | null }) {
   const pathname = usePathname()
-  const { user, signOut, hasPermission } = useAuth()
+  const { user, signOut, hasPermission, hasFeature } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 
@@ -97,6 +100,29 @@ export default function Sidebar({ logoUrl }: { logoUrl?: string | null }) {
           <div className="space-y-0.5">
             {visibleNav.map((item) => {
               const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+              const lockedByPlan = item.feature && !hasFeature(item.feature)
+
+              if (lockedByPlan) {
+                return (
+                  <Link
+                    key={item.href}
+                    href="/configuracion/plan"
+                    onClick={() => setMobileOpen(false)}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium opacity-60 hover:opacity-100 hover:bg-beige transition
+                      ${collapsed ? 'justify-center' : ''}
+                    `}
+                    title={collapsed ? `${item.label} — disponible en Pro` : 'Disponible en plan Pro'}
+                  >
+                    <span className="text-text-muted">{item.icon}</span>
+                    {!collapsed && (
+                      <>
+                        {item.label}
+                        <span className="ml-auto text-[9px] uppercase tracking-wider font-semibold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Pro</span>
+                      </>
+                    )}
+                  </Link>
+                )
+              }
 
               return (
                 <Link
