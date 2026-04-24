@@ -27,24 +27,29 @@ export default async function DashboardLayout({
   let colorPrimario = '#0ea5e9'
   let colorAcento = '#0284c7'
   let logoUrl: string | null = null
+  let onboarded = true // default true: si la columna no existe (mig 6 no aplicada), no forzamos wizard
   if (user.clinic_id) {
     try {
       const supabase = await createClient()
       const { data } = await supabase
         .from('clinic_settings')
-        .select('color_primario, color_acento, logo_url')
+        .select('color_primario, color_acento, logo_url, onboarded')
         .eq('clinic_id', user.clinic_id)
         .maybeSingle()
       if (data) {
-        const settings = data as unknown as { color_primario: string; color_acento: string; logo_url: string | null }
+        const settings = data as unknown as { color_primario: string; color_acento: string; logo_url: string | null; onboarded?: boolean }
         colorPrimario = settings.color_primario
         colorAcento = settings.color_acento
         logoUrl = settings.logo_url
+        if (settings.onboarded === false) onboarded = false
       }
     } catch (err) {
       console.error('[layout] clinic_settings query falló:', err)
     }
   }
+
+  // Clínica recién creada que aún no completó el wizard → forzar onboarding.
+  if (!onboarded) redirect('/onboarding')
 
   const themeStyle = {
     ['--clinic-primary' as string]: colorPrimario,

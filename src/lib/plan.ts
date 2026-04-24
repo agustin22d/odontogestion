@@ -38,7 +38,8 @@ export const PLAN_LABELS = {
 // Diferenciales user-facing — usado en /configuracion/plan para el comparador.
 interface PlanTier {
   nombre: string
-  precio: number
+  /** Precio en USD por mes. */
+  precio_usd: number
   max_sedes: number
   max_users: number
   /** Horas de configuración / soporte incluidas en el primer mes. */
@@ -62,7 +63,7 @@ export function shouldShowProBadges(): boolean {
 export const PLAN_TIERS: PlanTier[] = [
   {
     nombre: 'Starter',
-    precio: 25000,
+    precio_usd: 300,
     max_sedes: 2,
     max_users: 5,
     horas_soporte: 10,
@@ -89,7 +90,7 @@ export const PLAN_TIERS: PlanTier[] = [
   },
   {
     nombre: 'Pro',
-    precio: 60000,
+    precio_usd: 500,
     max_sedes: 10,
     max_users: 50,
     horas_soporte: 30,
