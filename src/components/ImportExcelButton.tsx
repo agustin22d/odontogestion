@@ -1,7 +1,9 @@
 'use client'
 
 import { useRef, useState } from 'react'
+import Link from 'next/link'
 import { Upload, FileSpreadsheet, X, CheckCircle2, AlertCircle } from 'lucide-react'
+import { useHasFeature } from './AuthProvider'
 
 interface Props {
   entity: 'turnos' | 'cobranzas' | 'gastos'
@@ -38,6 +40,21 @@ export default function ImportExcelButton({ entity, onSuccess }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
 
   const fmt = FORMATS[entity]
+  const canImport = useHasFeature('importar_excel')
+
+  if (!canImport) {
+    return (
+      <Link
+        href="/configuracion/plan"
+        className="flex items-center gap-2 px-3 py-2 bg-surface border border-border rounded-lg text-sm font-medium text-text-muted hover:bg-beige transition-colors"
+        title="Disponible en plan Pro"
+      >
+        <FileSpreadsheet size={16} />
+        Importar Excel
+        <span className="text-[9px] uppercase tracking-wider font-semibold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Pro</span>
+      </Link>
+    )
+  }
 
   const handleUpload = async () => {
     if (!file) return

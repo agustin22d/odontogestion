@@ -3,12 +3,15 @@
 import { createContext, useContext, useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { User } from '@/types/database'
+import { FEATURES_DEFAULT, type PlanFeatureKey, type PlanFeatures } from '@/lib/plan'
 
 interface AuthContextType {
   user: User | null
   loading: boolean
   signOut: () => void
   hasPermission: (perm: string) => boolean
+  hasFeature: (feature: PlanFeatureKey) => boolean
+  planFeatures: PlanFeatures
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -16,6 +19,8 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   signOut: () => {},
   hasPermission: () => false,
+  hasFeature: () => false,
+  planFeatures: FEATURES_DEFAULT,
 })
 
 export function useAuth() {
@@ -26,6 +31,12 @@ export function useAuth() {
 export function useHasPermission(perm: string): boolean {
   const { hasPermission } = useContext(AuthContext)
   return hasPermission(perm)
+}
+
+/** Hook para gating UI por plan: `const canLab = useHasFeature('laboratorio')` */
+export function useHasFeature(feature: PlanFeatureKey): boolean {
+  const { hasFeature } = useContext(AuthContext)
+  return hasFeature(feature)
 }
 
 function forceLogout() {
@@ -42,8 +53,22 @@ function forceLogout() {
 export function AuthProvider({ children, initialUser }: { children: React.ReactNode; initialUser: User | null }) {
   const [user] = useState<User | null>(initialUser)
   const [loading] = useState(false)
+  const [planFeatures, setPlanFeatures] = useState<PlanFeatures>(FEATURES_DEFAULT)
   const supabase = createClient()
   const hiddenAtRef = useRef(0)
+
+  // Fetch plan features once at mount. No auth listener needed — this is per-clinic
+  // and only changes when a super-admin bumps the plan, which is rare.
+  useEffect(() => {
+    if (!initialUser) return
+    let cancelled = false
+    supabase.rpc('get_plan_features').then((res: { data: unknown; error: unknown }) => {
+      if (cancelled || res.error || !res.data) return
+      setPlanFeatures({ ...FEATURES_DEFAULT, ...(res.data as PlanFeatures) })
+    })
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialUser?.clinic_id])
 
   // DO NOT use onAuthStateChange here.
   // Supabase's _recoverAndRefresh() fires SIGNED_IN on EVERY visibility
@@ -89,8 +114,12 @@ export function AuthProvider({ children, initialUser }: { children: React.ReactN
     return !!user?.permissions?.includes(perm)
   }
 
+  const hasFeature = (feature: PlanFeatureKey): boolean => {
+    return planFeatures[feature] === true
+  }
+
   return (
-    <AuthContext.Provider value={{ user, loading, signOut: handleSignOut, hasPermission }}>
+    <AuthContext.Provider value={{ user, loading, signOut: handleSignOut, hasPermission, hasFeature, planFeatures }}>
       {children}
     </AuthContext.Provider>
   )

@@ -168,7 +168,7 @@ export default function EvolucionAnual({ sedeFilter }: { sedeFilter: string }) {
       </div>
 
       {/* Chart */}
-      <div className="h-[280px]">
+      <div className="h-[280px] md:h-[340px] lg:h-[400px]">
         {loading ? (
           <div className="h-full flex items-center justify-center text-text-muted text-sm">Cargando...</div>
         ) : (

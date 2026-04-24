@@ -20,6 +20,8 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recha
 import type { Sede } from '@/types/database'
 import { getArgentinaToday, getArgentinaDate, formatFechaHoyAR } from '@/lib/utils/dates'
 import EvolucionAnual from './EvolucionAnual'
+import { useHasFeature } from '@/components/AuthProvider'
+import Link from 'next/link'
 
 type RangoPreset = 'hoy' | 'semana' | 'mes' | 'anio' | 'custom'
 
@@ -45,6 +47,7 @@ export default function DashboardPage() {
 
 function AdminDashboard() {
   const supabase = createClient()
+  const hasEvolucionAnual = useHasFeature('evolucion_anual')
   const [sedes, setSedes] = useState<Sede[]>([])
   const [sedeFilter, setSedeFilter] = useState<string>('todas')
   const [rango, setRango] = useState<RangoPreset>('mes')
@@ -349,7 +352,7 @@ function AdminDashboard() {
                 <TrendingUp size={16} className="text-text-muted" />
                 Cobranzas vs Gastos · {label}
               </h2>
-              <div className="h-[220px]">
+              <div className="h-[220px] md:h-[280px] lg:h-[340px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={chartData} barGap={2}>
                     <XAxis dataKey="label" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
@@ -375,8 +378,21 @@ function AdminDashboard() {
             </div>
           )}
 
-          {/* Evolución anual: 12 meses + comparación año-vs-año */}
-          <EvolucionAnual sedeFilter={sedeFilter} />
+          {/* Evolución anual: 12 meses + comparación año-vs-año (Pro) */}
+          {hasEvolucionAnual ? (
+            <EvolucionAnual sedeFilter={sedeFilter} />
+          ) : (
+            <Link
+              href="/configuracion/plan"
+              className="block bg-surface rounded-xl border border-dashed border-border p-6 text-center hover:bg-beige/30 transition-colors mb-6"
+            >
+              <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-100 text-amber-700 text-[10px] uppercase tracking-wider font-semibold rounded-full mb-2">
+                Plan Pro
+              </div>
+              <p className="text-sm font-medium text-text-primary">Evolución anual y comparación año-vs-año</p>
+              <p className="text-xs text-text-muted mt-1">Mirá la tendencia de cobranzas, gastos y resultado de los últimos 12 meses con delta % vs el año anterior. Disponible en plan Pro.</p>
+            </Link>
+          )}
 
           {/* Turnos por sede */}
           {sedeFilter === 'todas' && turnosPorSede.length > 0 && (

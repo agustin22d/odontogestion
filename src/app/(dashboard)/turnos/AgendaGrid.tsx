@@ -31,7 +31,6 @@ interface Props {
 }
 
 const PIXELS_PER_SLOT = 32
-const COL_MIN_WIDTH = 140
 const TIME_COL_WIDTH = 56
 
 function timeToMinutes(t: string) {
@@ -131,10 +130,7 @@ export default function AgendaGrid({
   return (
     <div className="bg-surface border border-border rounded-xl overflow-hidden">
       <div className="overflow-x-auto">
-        <div
-          className="flex min-w-fit"
-          style={{ width: TIME_COL_WIDTH + profesionales.length * COL_MIN_WIDTH }}
-        >
+        <div className="flex min-w-fit">
           {/* Columna de horas */}
           <div className="shrink-0" style={{ width: TIME_COL_WIDTH }}>
             <div className="bg-beige/50 border-b border-border" style={{ height: PIXELS_PER_SLOT }} />
@@ -164,8 +160,7 @@ export default function AgendaGrid({
             return (
               <div
                 key={prof.id}
-                className="shrink-0 grow"
-                style={{ minWidth: COL_MIN_WIDTH, flexBasis: COL_MIN_WIDTH }}
+                className="shrink-0 grow min-w-[110px] md:min-w-[140px] lg:min-w-[180px] basis-[110px] md:basis-[140px] lg:basis-[180px]"
               >
                 {/* Header */}
                 <div
