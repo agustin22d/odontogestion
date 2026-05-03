@@ -50,7 +50,7 @@ export default function SignupPage() {
       return
     }
 
-    const { error: rpcError } = await supabase.rpc('create_clinic_with_admin', {
+    const { data: rpcData, error: rpcError } = await supabase.rpc('create_clinic_with_admin', {
       p_clinic_name: clinicName.trim(),
       p_admin_nombre: adminNombre.trim(),
     })
@@ -59,6 +59,22 @@ export default function SignupPage() {
       setLoading(false)
       return
     }
+
+    // Notificar al panel admin (fire-and-forget)
+    const clinicId = typeof rpcData === 'string' ? rpcData : null
+    fetch('/api/notify-admin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        proyecto: 'odontogestion',
+        entity_type: 'clinic',
+        entity_id: clinicId,
+        auth_user_id: (await supabase.auth.getUser()).data.user?.id,
+        email: cleanEmail,
+        nombre: adminNombre.trim(),
+        datos_extra: { clinic_name: clinicName.trim() },
+      }),
+    }).catch(() => {})
 
     router.push('/dashboard')
     router.refresh()

@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { AuthProvider } from '@/components/AuthProvider'
 import Sidebar from '@/components/Sidebar'
+import { AccountBlocked } from '@/components/AccountBlocked'
 
 export default async function DashboardLayout({
   children,
@@ -50,6 +51,34 @@ export default async function DashboardLayout({
 
   // Clínica recién creada que aún no completó el wizard → forzar onboarding.
   if (!onboarded) redirect('/onboarding')
+
+  // Gate de aprobación: verificar si la clínica está aprobada y la suscripción no está pausada.
+  if (user.clinic_id) {
+    try {
+      const supabase = await createClient()
+      const { data: clinicData } = await supabase
+        .from('clinics')
+        .select('aprobada')
+        .eq('id', user.clinic_id)
+        .maybeSingle()
+
+      if (clinicData && clinicData.aprobada === false) {
+        return <AccountBlocked variant="pending" />
+      }
+
+      const { data: subData } = await supabase
+        .from('clinic_subscriptions')
+        .select('estado')
+        .eq('clinic_id', user.clinic_id)
+        .maybeSingle()
+
+      if (subData?.estado === 'paused') {
+        return <AccountBlocked variant="paused" />
+      }
+    } catch {
+      // fail-soft: si falla la query, dejamos pasar
+    }
+  }
 
   const themeStyle = {
     ['--clinic-primary' as string]: colorPrimario,
