@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import type { PlanFeatureKey } from '@/lib/plan'
+import { ProUpgradeModal } from './ProUpgradeModal'
 
 interface NavItem {
   label: string
@@ -43,6 +44,7 @@ export default function Sidebar({ logoUrl }: { logoUrl?: string | null }) {
   const { user, signOut, hasPermission, hasFeature, isSuperAdmin } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [proModal, setProModal] = useState<string | null>(null)
 
   const visibleNav = navItems.filter(i => hasPermission(i.perm))
 
@@ -105,11 +107,10 @@ export default function Sidebar({ logoUrl }: { logoUrl?: string | null }) {
 
               if (lockedByPlan) {
                 return (
-                  <Link
+                  <button
                     key={item.href}
-                    href="/configuracion/plan"
-                    onClick={() => setMobileOpen(false)}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium opacity-60 hover:opacity-100 hover:bg-beige transition
+                    onClick={() => { setMobileOpen(false); setProModal(item.label); }}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium w-full text-left opacity-60 hover:opacity-100 hover:bg-beige transition
                       ${collapsed ? 'justify-center' : ''}
                     `}
                     title={collapsed ? `${item.label} — disponible en Pro` : 'Disponible en plan Pro'}
@@ -117,11 +118,11 @@ export default function Sidebar({ logoUrl }: { logoUrl?: string | null }) {
                     <span className="text-text-muted">{item.icon}</span>
                     {!collapsed && (
                       <>
-                        {item.label}
-                        <span className="ml-auto text-[9px] uppercase tracking-wider font-semibold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Pro</span>
+                        <span className="flex-1">{item.label}</span>
+                        <span className="text-[9px] uppercase tracking-wider font-semibold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Pro</span>
                       </>
                     )}
-                  </Link>
+                  </button>
                 )
               }
 
@@ -182,6 +183,8 @@ export default function Sidebar({ logoUrl }: { logoUrl?: string | null }) {
           </button>
         </div>
       </aside>
+
+      {proModal && <ProUpgradeModal feature={proModal} onClose={() => setProModal(null)} />}
     </>
   )
 }

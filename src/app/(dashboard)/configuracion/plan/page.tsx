@@ -7,7 +7,7 @@ interface RawSub {
   estado: string
   trial_ends_at: string | null
   current_period_end: string | null
-  plan: { nombre: string; precio_mensual: number; max_sedes: number; max_users: number }[] | { nombre: string; precio_mensual: number; max_sedes: number; max_users: number } | null
+  plan: { nombre: string; precio_mensual?: number; max_sedes: number; max_users: number }[] | { nombre: string; precio_mensual?: number; max_sedes: number; max_users: number } | null
 }
 
 export default async function PlanPage() {

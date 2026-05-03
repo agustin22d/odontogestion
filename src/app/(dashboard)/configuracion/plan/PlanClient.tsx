@@ -1,16 +1,13 @@
 'use client'
 
-import { Check, X, Sparkles } from 'lucide-react'
-import { PLAN_TIERS } from '@/lib/plan'
+import { Sparkles, CheckCircle2, Clock } from 'lucide-react'
 
 interface SubscriptionData {
   estado: string
   trial_ends_at: string | null
   current_period_end: string | null
-  plan: { nombre: string; precio_mensual: number; max_sedes: number; max_users: number } | null
+  plan: { nombre: string; max_sedes: number; max_users: number; precio_mensual?: number } | null
 }
-
-const USD = (n: number) => `USD ${n.toLocaleString('en-US')}`
 
 export default function PlanClient({ subscription }: { subscription: SubscriptionData | null }) {
   const planActual = subscription?.plan?.nombre ?? 'Sin suscripción'
@@ -18,11 +15,13 @@ export default function PlanClient({ subscription }: { subscription: Subscriptio
   const trialEnd = subscription?.trial_ends_at ? new Date(subscription.trial_ends_at) : null
   const trialDaysLeft = trialEnd ? Math.max(0, Math.ceil((trialEnd.getTime() - Date.now()) / 86_400_000)) : null
 
+  const isPro = planActual.toLowerCase() === 'pro'
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-2xl">
       <div>
-        <h1 className="font-display text-2xl md:text-3xl font-semibold text-text-primary mb-1">Plan</h1>
-        <p className="text-sm text-text-secondary">Tu suscripción y comparación de planes disponibles.</p>
+        <h1 className="font-display text-2xl md:text-3xl font-semibold text-text-primary mb-1">Plan y suscripción</h1>
+        <p className="text-sm text-text-secondary">Tu plan actual y opciones disponibles.</p>
       </div>
 
       {/* Estado actual */}
@@ -33,97 +32,64 @@ export default function PlanClient({ subscription }: { subscription: Subscriptio
             <h2 className="font-display text-xl font-semibold text-text-primary">{planActual}</h2>
             {subscription?.plan && (
               <p className="text-sm text-text-secondary mt-1">
-                {USD(subscription.plan.precio_mensual)} / mes · hasta {subscription.plan.max_sedes} sedes · hasta {subscription.plan.max_users} usuarios
+                Hasta {subscription.plan.max_sedes} sedes · hasta {subscription.plan.max_users} usuarios
               </p>
             )}
           </div>
-          <div className="text-right">
+          <div>
             {estado === 'trialing' && trialDaysLeft !== null && (
               <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-100 text-amber-700 text-xs font-medium rounded-full">
                 <Sparkles size={12} /> Trial · {trialDaysLeft} día{trialDaysLeft !== 1 ? 's' : ''} restante{trialDaysLeft !== 1 ? 's' : ''}
               </span>
             )}
             {estado === 'active' && (
-              <span className="inline-flex items-center px-3 py-1.5 bg-green-light text-green-primary text-xs font-medium rounded-full">Activo</span>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-light text-green-primary text-xs font-medium rounded-full">
+                <CheckCircle2 size={12} /> Activo
+              </span>
             )}
-            {estado === 'past_due' && (
-              <span className="inline-flex items-center px-3 py-1.5 bg-red-light text-red text-xs font-medium rounded-full">Vencido</span>
-            )}
-            {estado === 'canceled' && (
-              <span className="inline-flex items-center px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-medium rounded-full">Cancelado</span>
+            {(estado === 'past_due' || estado === 'canceled') && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-light text-red text-xs font-medium rounded-full">
+                <Clock size={12} /> {estado === 'past_due' ? 'Vencido' : 'Cancelado'}
+              </span>
             )}
           </div>
         </div>
       </div>
 
-      {/* Comparador */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {PLAN_TIERS.map((plan) => {
-          const isCurrent = plan.nombre === planActual
-          const isPro = plan.nombre === 'Pro'
-          return (
-            <div
-              key={plan.nombre}
-              className={`bg-surface rounded-xl border p-6 flex flex-col ${isPro ? 'border-green-primary shadow-md' : 'border-border'}`}
-            >
-              <div className="flex items-center gap-2 mb-1">
-                <h3 className="font-display text-xl font-semibold text-text-primary">{plan.nombre}</h3>
-                {isPro && (
-                  <span className="text-[10px] uppercase tracking-wider font-semibold bg-green-light text-green-primary px-2 py-0.5 rounded">
-                    Recomendado
-                  </span>
-                )}
-                {isCurrent && (
-                  <span className="text-[10px] uppercase tracking-wider font-semibold bg-beige text-text-secondary px-2 py-0.5 rounded">
-                    Actual
-                  </span>
-                )}
-              </div>
-              <p className="text-2xl font-semibold text-text-primary mb-1">
-                {USD(plan.precio_usd)}
-                <span className="text-sm font-normal text-text-muted"> / mes</span>
-              </p>
-              <p className="text-xs text-text-muted mb-1">
-                Hasta {plan.max_sedes} sedes · {plan.max_users} usuarios
-              </p>
-              <p className="text-xs text-text-muted mb-4">
-                <span className="font-medium text-text-secondary">{plan.horas_soporte} hs</span> de configuración y soporte el primer mes
-              </p>
-
-              <ul className="space-y-2 mb-4 flex-1">
-                {plan.incluye.map((linea) => (
-                  <li key={linea} className="flex items-start gap-2 text-sm text-text-primary">
-                    <Check size={16} className="text-green-primary shrink-0 mt-0.5" />
-                    <span>{linea}</span>
-                  </li>
-                ))}
-                {plan.no_incluye.map((linea) => (
-                  <li key={linea} className="flex items-start gap-2 text-sm text-text-muted">
-                    <X size={16} className="text-text-muted shrink-0 mt-0.5" />
-                    <span className="line-through">{linea}</span>
-                  </li>
-                ))}
-              </ul>
-
-              {!isCurrent && (
-                <a
-                  href="mailto:soporte@odontogestion.com?subject=Quiero%20cambiar%20mi%20plan"
-                  className={`block text-center px-4 py-2.5 rounded-lg text-sm font-medium transition
-                    ${isPro
-                      ? 'bg-green-primary text-white hover:bg-green-primary/90'
-                      : 'bg-beige text-text-primary hover:bg-beige/70'
-                    }`}
-                >
-                  {isPro ? 'Pasar a Pro' : 'Cambiar a Starter'}
-                </a>
-              )}
+      {/* CTA de cambio */}
+      <div className={`rounded-xl border p-6 ${isPro ? 'bg-green-light/30 border-green-primary/30' : 'bg-surface border-border'}`}>
+        {isPro ? (
+          <div className="flex items-start gap-3">
+            <CheckCircle2 size={20} className="text-green-primary shrink-0 mt-0.5" />
+            <div>
+              <p className="font-medium text-text-primary">Tenés el plan Pro activo</p>
+              <p className="text-sm text-text-secondary mt-1">Tenés acceso a todas las funciones de la plataforma.</p>
             </div>
-          )
-        })}
+          </div>
+        ) : (
+          <div>
+            <p className="text-xs uppercase tracking-wider text-text-muted font-medium mb-2">Plan Pro disponible</p>
+            <p className="font-semibold text-text-primary mb-1">Accedé a todas las funciones</p>
+            <p className="text-sm text-text-secondary mb-4">
+              Con el plan Pro habilitás Finanzas, Laboratorio, White-label, reportes avanzados y más.
+              Contactanos y lo activamos en menos de 24 horas hábiles.
+            </p>
+            <a
+              href="mailto:info@didigitalstudio.com?subject=Solicitud%20plan%20Pro%20-%20Odontogestion"
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-green-primary text-white rounded-lg text-sm font-semibold hover:bg-green-primary/90 transition"
+            >
+              Contactar a DI Digital Studio
+            </a>
+          </div>
+        )}
       </div>
 
-      <p className="text-xs text-text-muted text-center">
-        Los cambios de plan se procesan manualmente por ahora. Escribinos a soporte@odontogestion.com y activamos el cambio en menos de 24 horas hábiles.
+      <p className="text-xs text-text-muted">
+        Los cambios de plan se activan manualmente. Escribinos a{' '}
+        <a href="mailto:info@didigitalstudio.com" className="text-green-primary hover:underline">
+          info@didigitalstudio.com
+        </a>{' '}
+        y lo gestionamos en menos de 24 horas hábiles.
       </p>
     </div>
   )
